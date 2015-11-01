@@ -1,4 +1,5 @@
 CC?=clang
+NOOUT=2>&1 >/dev/null
 GMIME_LIB_PATH=-ggdb3 `pkg-config --cflags --libs gmime-2.6`
 INCLUDES=-I$(GMIME_LIB_PATH)
 OPTFLAGS?=-O3 -fPIC -std=c99 -Wall
@@ -11,8 +12,9 @@ version:
 	@cat VERSION
 
 jmime-examples:
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) parson/parson.c jmime.c examples/jmime_json.c -o examples/jmime_json
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) parson/parson.c jmime.c examples/jmime_attachment.c -o examples/jmime_attachment
+	@mkdir -p examples/bin $(NOOUT)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) parson/parson.c jmime.c examples/jmime_json.c -o examples/bin/jmime_json
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) parson/parson.c jmime.c examples/jmime_attachment.c -o examples/bin/jmime_attachment
 
 check-cc:
 	@hash clang 2>/dev/null || \
@@ -22,4 +24,4 @@ check-cc:
 	exit 1)
 
 clean:
-	rm -rf examples/jmime_attachment examples/jmime_json
+	rm -rf examples/bin
