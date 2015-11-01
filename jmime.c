@@ -14,7 +14,7 @@
 #define UTF8_CHARSET "UTF-8"
 #define MAX_EMBEDDED_INLINE_ATTACHMENT 65536
 #define RECURSION_LIMIT 30
-
+#define CITATION_COLOUR 16711680
 
 typedef struct PartCollectorCallbackData {
   // We keep track of explicit recursions, and limit them (RECURSION_LIMIT)
@@ -92,15 +92,18 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     }
 
     GMimeFilter *html_filter = NULL;
+    GMimeFilter *from_filter;
     if (g_mime_content_type_is_type (content_type, "text", "plain")) {
       html_filter = g_mime_filter_html_new(GMIME_FILTER_HTML_CONVERT_NL |
                                            GMIME_FILTER_HTML_CONVERT_SPACES |
                                            GMIME_FILTER_HTML_CONVERT_URLS |
                                            GMIME_FILTER_HTML_MARK_CITATION |
                                            GMIME_FILTER_HTML_CONVERT_ADDRESSES |
-                                           GMIME_FILTER_HTML_ESCAPE_8BIT |
-                                           GMIME_FILTER_HTML_CITE, 16711680);
+                                           GMIME_FILTER_HTML_CITE, CITATION_COLOUR);
       g_mime_stream_filter_add(GMIME_STREAM_FILTER(mem_stream_filter), html_filter);
+
+      from_filter = g_mime_filter_from_new (GMIME_FILTER_FROM_MODE_ESCAPE);
+      g_mime_stream_filter_add(GMIME_STREAM_FILTER(mem_stream_filter), from_filter);
     }
 
     GMimeDataWrapper *wrapper = g_mime_part_get_content_object ((GMimePart *) part);
@@ -117,8 +120,10 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     if (utf8_charset_filter)
       g_object_unref(utf8_charset_filter);
 
-    if (html_filter)
+    if (html_filter) {
+      g_object_unref(from_filter);
       g_object_unref(html_filter);
+    }
 
     g_object_unref(mem_stream_filter);
     g_object_unref(mem_stream);
