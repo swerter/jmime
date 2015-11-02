@@ -89,49 +89,51 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     GMimeStream *mem_stream = g_mime_stream_mem_new();
     g_mime_stream_mem_set_owner ((GMimeStreamMem *) mem_stream, TRUE);
 
-    GMimeStream *mem_stream_filter = g_mime_stream_filter_new(mem_stream);
+    GMimeStreamFilter *mem_stream_filtered;
+    mem_stream_filtered = (GMimeStreamFilter *) g_mime_stream_filter_new(mem_stream);
 
     const char *charset = g_mime_object_get_content_type_parameter (part, "charset");
-    GMimeFilter *utf8_charset_filter = NULL;
-
     if (charset && g_ascii_strcasecmp(charset, UTF8_CHARSET)) {
-      utf8_charset_filter = g_mime_filter_charset_new(charset, UTF8_CHARSET);
-      g_mime_stream_filter_add(GMIME_STREAM_FILTER(mem_stream_filter), utf8_charset_filter);
+      GMimeFilter *utf8_charset_filter = g_mime_filter_charset_new(charset, UTF8_CHARSET);
+      g_mime_stream_filter_add(GMIME_STREAM_FILTER(mem_stream_filtered), utf8_charset_filter);
+      g_object_unref(utf8_charset_filter);
     }
 
-    GMimeFilter *html_filter = NULL;
-    GMimeFilter *from_filter;
-    if (g_mime_content_type_is_type (content_type, "text", "plain")) {
-      html_filter = g_mime_filter_html_new(GMIME_FILTER_HTML_CONVERT_NL |
-                                           GMIME_FILTER_HTML_CONVERT_SPACES |
-                                           GMIME_FILTER_HTML_CONVERT_URLS |
-                                           GMIME_FILTER_HTML_MARK_CITATION |
-                                           GMIME_FILTER_HTML_CONVERT_ADDRESSES |
-                                           GMIME_FILTER_HTML_CITE, CITATION_COLOUR);
-      g_mime_stream_filter_add(GMIME_STREAM_FILTER(mem_stream_filter), html_filter);
+  if (g_mime_content_type_is_type (content_type, "text", "plain")) {
+      GMimeFilter *strip_filter = g_mime_filter_strip_new();
+      g_mime_stream_filter_add(mem_stream_filtered, strip_filter);
+      g_object_unref(strip_filter);
 
-      from_filter = g_mime_filter_from_new (GMIME_FILTER_FROM_MODE_ESCAPE);
-      g_mime_stream_filter_add(GMIME_STREAM_FILTER(mem_stream_filter), from_filter);
+      GMimeFilter *crlf_filter = g_mime_filter_crlf_new(FALSE, TRUE);
+      g_mime_stream_filter_add(mem_stream_filtered, crlf_filter);
+      g_object_unref(crlf_filter);
+
+      GMimeFilter *html_filter = g_mime_filter_html_new(
+         GMIME_FILTER_HTML_CONVERT_NL |
+         GMIME_FILTER_HTML_CONVERT_SPACES |
+         GMIME_FILTER_HTML_CONVERT_URLS |
+         GMIME_FILTER_HTML_MARK_CITATION |
+         GMIME_FILTER_HTML_CONVERT_ADDRESSES |
+         GMIME_FILTER_HTML_CITE, CITATION_COLOUR);
+      g_mime_stream_filter_add(mem_stream_filtered, html_filter);
+      g_object_unref(html_filter);
+
+      GMimeFilter *from_filter = g_mime_filter_from_new (GMIME_FILTER_FROM_MODE_ESCAPE);
+      g_mime_stream_filter_add(mem_stream_filtered, from_filter);
+      g_object_unref(from_filter);
     }
+
 
     GMimeDataWrapper *wrapper = g_mime_part_get_content_object ((GMimePart *) part);
 
-    g_mime_data_wrapper_write_to_stream(wrapper, mem_stream_filter);
+    g_mime_data_wrapper_write_to_stream(wrapper, (GMimeStream *) mem_stream_filtered);
 
     // Freed by the mem_stream on its own (owner) [transfer none]
     GByteArray *part_content = g_mime_stream_mem_get_byte_array((GMimeStreamMem *) mem_stream);
 
     char *content_data = g_strndup((const gchar *) part_content->data, part_content->len);
 
-    if (utf8_charset_filter)
-      g_object_unref(utf8_charset_filter);
-
-    if (html_filter) {
-      g_object_unref(from_filter);
-      g_object_unref(html_filter);
-    }
-
-    g_object_unref(mem_stream_filter);
+    g_object_unref(mem_stream_filtered);
     g_object_unref(mem_stream);
 
     json_object_set_string(body_object, "content", content_data);
