@@ -1,5 +1,3 @@
-// cc -O3 -fPIC -std=c99 -Wall -I-ggdb3 `pkg-config --cflags --libs gmime-2.6` parson/parson.c jmime.c -o jmime
-//
 #include <string.h>
 #include <gmime/gmime.h>
 #include <glib/gprintf.h>
@@ -16,11 +14,28 @@
 #define RECURSION_LIMIT 30
 #define CITATION_COLOUR 16711680
 
+/*
+ *
+ */
+GMimeMessage *jmime_message_from_path(char *path);
+GMimeMessage *jmime_message_from_file(FILE *fd);
+
+char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies);
+
+GByteArray *jmime_message_get_inline_attachment_data(GMimeMessage* message, char* content_id, int part_id);
+GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* filename, int part_id);
+
+
+/*
+ *
+ */
+
 typedef struct PartCollectorCallbackData {
   // We keep track of explicit recursions, and limit them (RECURSION_LIMIT)
   int recursion_depth;
   // We keep track of the depth within message parts
   int part_id;
+
   // Actual values we are interested in
   JSON_Value *bodies;
   JSON_Value *inlines;
@@ -37,15 +52,8 @@ typedef struct AttachmentCollectorCallbackData {
 } AttachmentCollectorCallbackData;
 
 
-GByteArray *get_inline_content(GMimeMessage* message, char* content_id, int part_id);
-GByteArray *get_attachment(GMimeMessage* message, char* filename, int part_id);
+static GMimeMessage* message_from_stream(GMimeStream *stream);
 
-GMimeMessage *mime_email_file_to_message(FILE *fd);
-char *mime_message_to_json(GMimeMessage *message);
-
-static GMimeMessage* construct_message_from_stream(GMimeStream *stream);
-
-static PartCollectorCallbackData *new_part_collector_data();
 static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata);
 static void collector_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data);
 
@@ -57,18 +65,10 @@ static void extract_attachment(GMimeObject *part, AttachmentCollectorCallbackDat
 static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data);
 
 
-// Gives new instance to be used as user_data in foreach
-static PartCollectorCallbackData *new_part_collector_data() {
-  PartCollectorCallbackData *val = g_malloc(sizeof(PartCollectorCallbackData));
-  val->bodies = json_value_init_array();
-  val->inlines = json_value_init_array();
-  val->attachments = json_value_init_array();
-  val->recursion_depth = 0;
-  val->part_id = 0;
-  return val;
-}
-
-
+/*
+ *
+ *
+ */
 static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
   GMimeContentType *content_type = g_mime_object_get_content_type(part);
 
@@ -213,6 +213,10 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
 }
 
 
+/*
+ *
+ *
+ */
 static void collector_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data) {
   g_return_if_fail (user_data != NULL);
 
@@ -243,7 +247,11 @@ static void collector_foreach_callback(GMimeObject *parent, GMimeObject *part, g
 }
 
 
-char *mime_message_to_json(GMimeMessage *message) {
+/*
+ *
+ *
+ */
+char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies) {
   JSON_Value *root_value = json_value_init_object();
   JSON_Object *root_object = json_value_get_object(root_value);
 
@@ -288,42 +296,50 @@ char *mime_message_to_json(GMimeMessage *message) {
   json_object_set_string(headers_object, "inReplyTo", g_mime_object_get_header (GMIME_OBJECT (message), "In-reply-to"));
   json_object_set_string(headers_object, "references", g_mime_object_get_header (GMIME_OBJECT (message), "References"));
 
-  PartCollectorCallbackData *json_collector = new_part_collector_data();
+  PartCollectorCallbackData *part_collector;
 
-  // Collect parts
-  g_mime_message_foreach(message, collector_foreach_callback, json_collector);
+  if (collect_bodies)  {
+    part_collector = g_malloc(sizeof(PartCollectorCallbackData));
+    part_collector->bodies = json_value_init_array();
+    part_collector->inlines = json_value_init_array();
+    part_collector->attachments = json_value_init_array();
+    part_collector->recursion_depth = 0;
+    part_collector->part_id = 0;
 
-  // Use found bodies, and if none, destroy the array
-  if (json_array_get_count(json_value_get_array(json_collector->bodies)) > 0) {
-    json_object_set_value(root_object, "bodies", json_collector->bodies);
-  } else {
-    json_value_free(json_collector->bodies);
-  }
+    // Collect parts
+    g_mime_message_foreach(message, collector_foreach_callback, part_collector);
 
-  // Use found inline attachments, and if none, destroy the array
-  if (json_array_get_count(json_value_get_array(json_collector->inlines)) > 0) {
-    json_object_set_value(root_object, "inlines", json_collector->inlines);
-  } else {
-    json_value_free(json_collector->inlines);
-  }
+    // Use found bodies, and if none, destroy the array
+    if (json_array_get_count(json_value_get_array(part_collector->bodies)) > 0) {
+      json_object_set_value(root_object, "bodies", part_collector->bodies);
+    } else {
+      json_value_free(part_collector->bodies);
+    }
 
-  // Use found attachments, and if none, destroy the array
-  if (json_array_get_count(json_value_get_array(json_collector->attachments)) > 0) {
-    json_object_set_value(root_object, "attachments", json_collector->attachments);
-  } else {
-    json_value_free(json_collector->attachments);
+    // Use found attachments, and if none, destroy the array
+    if (json_array_get_count(json_value_get_array(part_collector->attachments)) > 0) {
+      json_object_set_value(root_object, "attachments", part_collector->attachments);
+    } else {
+      json_value_free(part_collector->attachments);
+    }
   }
 
   char *serialized_string = json_serialize_to_string(root_value);
 
-  g_free(json_collector);
+  if (collect_bodies)
+    g_free(part_collector);
+
   json_value_free(root_value);
 
   return serialized_string;
 }
 
 
-static GMimeMessage* construct_message_from_stream(GMimeStream *stream) {
+/*
+ *
+ *
+ */
+static GMimeMessage* message_from_stream(GMimeStream *stream) {
   GMimeParser *parser = g_mime_parser_new_with_stream (stream);
   if (!parser) {
     g_printerr("failed to create parser\r\n");
@@ -341,7 +357,10 @@ static GMimeMessage* construct_message_from_stream(GMimeStream *stream) {
 }
 
 
-
+/*
+ *
+ *
+ */
 static AttachmentCollectorCallbackData *new_attachment_collector_data(char *filename, char* content_id, int part_id) {
   AttachmentCollectorCallbackData *val = g_malloc(sizeof(AttachmentCollectorCallbackData));
   val->part_id = part_id;
@@ -352,15 +371,29 @@ static AttachmentCollectorCallbackData *new_attachment_collector_data(char *file
   return val;
 }
 
+
+/*
+ *
+ *
+ */
 static AttachmentCollectorCallbackData *new_attachment_collector_data_with_content_id(char* content_id, int part_id) {
   return new_attachment_collector_data(NULL, content_id, part_id);
 }
 
+
+/*
+ *
+ *
+ */
 static AttachmentCollectorCallbackData *new_attachment_collector_data_with_filename(char* filename, int part_id) {
   return new_attachment_collector_data(filename, NULL, part_id);
 }
 
 
+/*
+ *
+ *
+ */
 static void extract_attachment(GMimeObject *part, AttachmentCollectorCallbackData *a_data) {
   GMimeContentDisposition *disp = g_mime_object_get_content_disposition(part);
 
@@ -398,6 +431,10 @@ static void extract_attachment(GMimeObject *part, AttachmentCollectorCallbackDat
 }
 
 
+/*
+ *
+ *
+ */
 static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data) {
   AttachmentCollectorCallbackData *a_data = (AttachmentCollectorCallbackData *) user_data;
 
@@ -430,7 +467,11 @@ static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, 
 }
 
 
-GByteArray *get_inline_content(GMimeMessage* message, char* content_id, int part_id) {
+/*
+ *
+ *
+ */
+GByteArray *jmime_message_get_inline_attachment_data(GMimeMessage* message, char* content_id, int part_id) {
   AttachmentCollectorCallbackData *a_data = new_attachment_collector_data_with_content_id(content_id, part_id);
 
   g_mime_message_foreach(message, attachment_foreach_callback, a_data);
@@ -445,7 +486,11 @@ GByteArray *get_inline_content(GMimeMessage* message, char* content_id, int part
 }
 
 
-GByteArray *get_attachment(GMimeMessage* message, char* filename, int part_id) {
+/*
+ *
+ *
+ */
+GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* filename, int part_id) {
   AttachmentCollectorCallbackData *a_data = new_attachment_collector_data_with_filename(filename, part_id);
 
   g_mime_message_foreach(message, attachment_foreach_callback, a_data);
@@ -460,23 +505,52 @@ GByteArray *get_attachment(GMimeMessage* message, char* filename, int part_id) {
 }
 
 
-GMimeMessage *mime_email_file_to_message(FILE *fd) {
-  GMimeStream *stream = g_mime_stream_file_new (fd);
+/*
+ *
+ *
+ */
+GMimeMessage *jmime_message_from_path(char *path) {
+  // Note: we don't need to worry about closing the file, as it will be closed by the
+  // stream within message_from_file.
+  FILE *file = fopen (path, "r");
+
+  if (!file) {
+    g_printerr("cannot open file '%s': %s\r\n", path, g_strerror(errno));
+    return NULL;
+  }
+
+  GMimeMessage *message = jmime_message_from_file(file);
+  if (!message) {
+    g_printerr("message could not be constructed from file '%s': %s\r\n", path, g_strerror(errno));
+    return NULL;
+  }
+
+  return message;
+}
+
+
+/*
+ *
+ *
+ */
+GMimeMessage *jmime_message_from_file(FILE *file) {
+  GMimeStream *stream = g_mime_stream_file_new (file);
 
   // Being owner of the stream will automatically close the file when released
   g_mime_stream_file_set_owner((GMimeStreamFile *) stream, TRUE);
 
   if (!stream) {
-    g_printerr("cannot open stream\r\n");
-    goto leave;
+    g_printerr("file stream could not be opened\r\n");
+    fclose(file);
+    return NULL;
   }
 
-  GMimeMessage *message = construct_message_from_stream(stream);
+  GMimeMessage *message = message_from_stream(stream);
   g_object_unref (stream);
-  if (message)
-    return message;
-
-  leave:
-    fclose(fd);
+  if (!message) {
+    g_printerr("message could not be constructed from stream\r\n");
     return NULL;
+  }
+
+  return message;
 }

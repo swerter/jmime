@@ -1,6 +1,8 @@
-GMimeMessage *mime_email_file_to_message(FILE *fd);
-char *mime_message_to_json(GMimeMessage *message);
+GMimeMessage *jmime_message_from_path(char *path);
+GMimeMessage *jmime_message_from_file(FILE *fd);
 
-GByteArray *get_inline_content(GMimeMessage* message, char* content_id, int part_id);
-GByteArray *get_attachment(GMimeMessage* message, char* filename, int part_id);
+char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies);
+
+GByteArray *jmime_message_get_inline_attachment_data(GMimeMessage* message, char* content_id, int part_id);
+GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* filename, int part_id);
 
