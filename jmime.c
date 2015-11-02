@@ -104,7 +104,7 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
       g_mime_stream_filter_add(mem_stream_filtered, strip_filter);
       g_object_unref(strip_filter);
 
-      GMimeFilter *crlf_filter = g_mime_filter_crlf_new(FALSE, TRUE);
+      GMimeFilter *crlf_filter = g_mime_filter_crlf_new(FALSE, FALSE);
       g_mime_stream_filter_add(mem_stream_filtered, crlf_filter);
       g_object_unref(crlf_filter);
 
