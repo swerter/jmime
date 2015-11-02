@@ -40,7 +40,7 @@ GMimeMessage *jmime_message_from_file(FILE *fd);
 
 char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies);
 
-GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* name, unsigned int part_id, char* disposition);
+GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* disposition, unsigned int part_id, char* name);
 
 /*
  *
@@ -439,7 +439,7 @@ static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, 
  *
  *
  */
-GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* name, unsigned int part_id, char* disposition) {
+GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* disposition, unsigned int part_id, char* name) {
   g_return_val_if_fail(message != NULL, NULL);
   g_return_val_if_fail(name != NULL, NULL);
   g_return_val_if_fail(disposition != NULL, NULL);
