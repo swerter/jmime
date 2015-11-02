@@ -5,10 +5,6 @@
 #include <errno.h>
 #include "parson/parson.h"
 
-#ifndef g_memcpy
-# define g_memcpy memcpy
-#endif
-
 #define UTF8_CHARSET "UTF-8"
 #define MAX_EMBEDDED_INLINE_ATTACHMENT 65536
 #define RECURSION_LIMIT 30
@@ -113,9 +109,7 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     // Freed by the mem_stream on its own (owner) [transfer none]
     GByteArray *part_content = g_mime_stream_mem_get_byte_array((GMimeStreamMem *) mem_stream);
 
-    char *content_data = g_malloc(sizeof(char) * (part_content->len + 1));
-    content_data[part_content->len] = '\0';
-    g_memcpy(content_data, part_content->data, part_content->len);
+    char *content_data = g_strndup((const gchar *) part_content->data, part_content->len);
 
     if (utf8_charset_filter)
       g_object_unref(utf8_charset_filter);
