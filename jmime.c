@@ -5,14 +5,33 @@
 #include <errno.h>
 #include "parson/parson.h"
 
+
 #define UTF8_CHARSET "UTF-8"
 #define MAX_EMBEDDED_INLINE_ATTACHMENT 65536
 #define RECURSION_LIMIT 30
 #define CITATION_COLOUR 16711680
 
-/*
- *
- */
+
+typedef struct PartCollectorCallbackData {
+  // We keep track of explicit recursions, and limit them (RECURSION_LIMIT)
+  int recursion_depth;
+  // We keep track of the depth within message parts
+  int part_id;
+  // Actual values we are interested in
+  JSON_Value *bodies;
+  JSON_Value *attachments;
+} PartCollectorCallbackData;
+
+
+typedef struct AttachmentCollectorData {
+  int recursion_depth;
+  int part_id;
+  char *name;
+  char *disposition;
+  GByteArray *content;
+} AttachmentCollectorData;
+
+
 void jmime_init();
 void jmime_shutdown();
 
@@ -21,46 +40,18 @@ GMimeMessage *jmime_message_from_file(FILE *fd);
 
 char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies);
 
-GByteArray *jmime_message_get_inline_attachment_data(GMimeMessage* message, char* content_id, int part_id);
-GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* filename, int part_id);
-
+GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* name, unsigned int part_id, char* disposition);
 
 /*
  *
  */
-
-typedef struct PartCollectorCallbackData {
-  // We keep track of explicit recursions, and limit them (RECURSION_LIMIT)
-  int recursion_depth;
-  // We keep track of the depth within message parts
-  int part_id;
-
-  // Actual values we are interested in
-  JSON_Value *bodies;
-  JSON_Value *inlines;
-  JSON_Value *attachments;
-} PartCollectorCallbackData;
-
-
-typedef struct AttachmentCollectorCallbackData {
-  int recursion_depth;
-  int part_id;
-  char *filename;
-  char *content_id;
-  GByteArray *content;
-} AttachmentCollectorCallbackData;
-
 
 static GMimeMessage* message_from_stream(GMimeStream *stream);
 
 static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata);
 static void collector_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data);
 
-static AttachmentCollectorCallbackData *new_attachment_collector_data(char *filename, char* content_id, int part_id);
-static AttachmentCollectorCallbackData *new_attachment_collector_data_with_content_id(char* content_id, int part_id);
-static AttachmentCollectorCallbackData *new_attachment_collector_data_with_filename(char* filename, int part_id);
-
-static void extract_attachment(GMimeObject *part, AttachmentCollectorCallbackData *a_data);
+static void extract_attachment(GMimeObject *part, AttachmentCollectorData *a_data);
 static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data);
 
 
@@ -308,7 +299,6 @@ char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies) {
   if (collect_bodies)  {
     part_collector = g_malloc(sizeof(PartCollectorCallbackData));
     part_collector->bodies = json_value_init_array();
-    part_collector->inlines = json_value_init_array();
     part_collector->attachments = json_value_init_array();
     part_collector->recursion_depth = 0;
     part_collector->part_id = 0;
@@ -364,72 +354,35 @@ static GMimeMessage* message_from_stream(GMimeStream *stream) {
 }
 
 
-/*
- *
- *
- */
-static AttachmentCollectorCallbackData *new_attachment_collector_data(char *filename, char* content_id, int part_id) {
-  AttachmentCollectorCallbackData *val = g_malloc(sizeof(AttachmentCollectorCallbackData));
-  val->part_id = part_id;
-  val->content_id = content_id;
-  val->filename = filename;
-  val->content = NULL;
-  val->recursion_depth = 0;
-  return val;
-}
-
 
 /*
  *
  *
  */
-static AttachmentCollectorCallbackData *new_attachment_collector_data_with_content_id(char* content_id, int part_id) {
-  return new_attachment_collector_data(NULL, content_id, part_id);
-}
-
-
-/*
- *
- *
- */
-static AttachmentCollectorCallbackData *new_attachment_collector_data_with_filename(char* filename, int part_id) {
-  return new_attachment_collector_data(filename, NULL, part_id);
-}
-
-
-/*
- *
- *
- */
-static void extract_attachment(GMimeObject *part, AttachmentCollectorCallbackData *a_data) {
+static void extract_attachment(GMimeObject *part, AttachmentCollectorData *a_data) {
   GMimeContentDisposition *disp = g_mime_object_get_content_disposition(part);
 
   // Attachment without disposition is not really useful
   if (!disp)
     return;
 
-  // We support only two disposition kinds, inline and attachment
-  if (g_ascii_strcasecmp(disp->disposition, GMIME_DISPOSITION_INLINE) &&
-      g_ascii_strcasecmp(disp->disposition, GMIME_DISPOSITION_ATTACHMENT))
+  // The attachment disposition does not match the query in a_data
+  if (g_ascii_strcasecmp(a_data->disposition, disp->disposition))
     return;
 
-  if (a_data->filename) {
-    const char *filename = g_mime_part_get_filename((GMimePart *) part);
-
-    if (a_data->filename && (!filename || g_ascii_strcasecmp(filename, a_data->filename)))
-      return;
-
-  } else if (a_data->content_id) {
-    const char *content_id = g_mime_part_get_content_id((GMimePart *) part);
-    if (a_data->content_id && (!content_id || g_ascii_strcasecmp(content_id, a_data->content_id)))
-      return;
-  }
+  // Either the filename or the content Id has to match, otherwise bail.
+  const char *filename = g_mime_part_get_filename((GMimePart *) part);
+  const char *content_id = g_mime_part_get_content_id((GMimePart *) part);
+  if (!(filename && !g_ascii_strcasecmp(filename, a_data->name)) &&
+      !(content_id && !g_ascii_strcasecmp(content_id, a_data->name)))
+    return;
 
   GMimeDataWrapper *attachment_wrapper = g_mime_part_get_content_object ((GMimePart *) part);
   GMimeStream *attachment_mem_stream = g_mime_stream_mem_new();
 
   // We want to keep the byte array after we close the stream
   g_mime_stream_mem_set_owner ((GMimeStreamMem *) attachment_mem_stream, FALSE);
+
   g_mime_data_wrapper_write_to_stream(attachment_wrapper, attachment_mem_stream);
 
   a_data->content = g_mime_stream_mem_get_byte_array((GMimeStreamMem *) attachment_mem_stream);
@@ -443,7 +396,7 @@ static void extract_attachment(GMimeObject *part, AttachmentCollectorCallbackDat
  *
  */
 static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data) {
-  AttachmentCollectorCallbackData *a_data = (AttachmentCollectorCallbackData *) user_data;
+  AttachmentCollectorData *a_data = (AttachmentCollectorData *) user_data;
 
   if (GMIME_IS_MESSAGE_PART (part)) {
 
@@ -478,8 +431,19 @@ static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, 
  *
  *
  */
-GByteArray *jmime_message_get_inline_attachment_data(GMimeMessage* message, char* content_id, int part_id) {
-  AttachmentCollectorCallbackData *a_data = new_attachment_collector_data_with_content_id(content_id, part_id);
+GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* name, unsigned int part_id, char* disposition) {
+  g_return_val_if_fail(message != NULL, NULL);
+  g_return_val_if_fail(name != NULL, NULL);
+  g_return_val_if_fail(disposition != NULL, NULL);
+  g_return_val_if_fail(!g_ascii_strcasecmp(disposition, GMIME_DISPOSITION_ATTACHMENT) ||
+                       !g_ascii_strcasecmp(disposition, GMIME_DISPOSITION_INLINE), NULL);
+
+  AttachmentCollectorData *a_data = g_malloc(sizeof(AttachmentCollectorData));
+  a_data->recursion_depth = 0;
+  a_data->part_id = part_id;
+  a_data->name = name;
+  a_data->disposition = disposition;
+  a_data->content = NULL;
 
   g_mime_message_foreach(message, attachment_foreach_callback, a_data);
 
@@ -487,26 +451,7 @@ GByteArray *jmime_message_get_inline_attachment_data(GMimeMessage* message, char
   g_free(a_data);
 
   if (!content)
-    g_printerr("Attachment with Content-Id `%s` as message part of %d could not be located!\r\n", content_id, part_id);
-
-  return content;
-}
-
-
-/*
- *
- *
- */
-GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* filename, int part_id) {
-  AttachmentCollectorCallbackData *a_data = new_attachment_collector_data_with_filename(filename, part_id);
-
-  g_mime_message_foreach(message, attachment_foreach_callback, a_data);
-
-  GByteArray *content = a_data->content;
-  g_free(a_data);
-
-  if (!content)
-    g_printerr("Attachment with filename `%s` as message part of %d could not be located!\r\n", filename, part_id);
+    g_printerr("could not locate %s [%s] as message part %d\r\n", disposition, name, part_id);
 
   return content;
 }
