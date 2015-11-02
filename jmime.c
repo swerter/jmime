@@ -55,11 +55,19 @@ static void extract_attachment(GMimeObject *part, AttachmentCollectorData *a_dat
 static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data);
 
 
+/*
+ *
+ *
+ */
 void jmime_init() {
   g_mime_init(GMIME_ENABLE_RFC2047_WORKAROUNDS);
 }
 
 
+/*
+ *
+ *
+ */
 void jmime_shutdown() {
   g_mime_shutdown();
 }
