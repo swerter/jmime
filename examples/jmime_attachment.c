@@ -9,7 +9,7 @@ int main (int argc, char *argv[]) {
     return 1;
   }
 
-  g_mime_init(GMIME_ENABLE_RFC2047_WORKAROUNDS);
+  jmime_init();
 
   GMimeMessage *message = jmime_message_from_path(argv[1]);
   if (!message)
@@ -37,7 +37,8 @@ int main (int argc, char *argv[]) {
   fclose(fout);
 
   g_byte_array_free(attachment, TRUE);
-  g_mime_shutdown ();
+
+  jmime_shutdown();
 
   return 0;
 }

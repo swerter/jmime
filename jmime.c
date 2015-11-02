@@ -13,6 +13,9 @@
 /*
  *
  */
+void jmime_init();
+void jmime_shutdown();
+
 GMimeMessage *jmime_message_from_path(char *path);
 GMimeMessage *jmime_message_from_file(FILE *fd);
 
@@ -59,6 +62,16 @@ static AttachmentCollectorCallbackData *new_attachment_collector_data_with_filen
 
 static void extract_attachment(GMimeObject *part, AttachmentCollectorCallbackData *a_data);
 static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data);
+
+
+void jmime_init() {
+  g_mime_init(GMIME_ENABLE_RFC2047_WORKAROUNDS);
+}
+
+
+void jmime_shutdown() {
+  g_mime_shutdown();
+}
 
 
 /*

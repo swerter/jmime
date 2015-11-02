@@ -2,14 +2,14 @@
 #include <gmime/gmime.h>
 #include "../jmime.h"
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
 
   if (argc < 2) {
     g_printerr ("usage: %s <MIME-Message-path>\n", argv[0]);
     return 1;
   }
 
-  g_mime_init(GMIME_ENABLE_RFC2047_WORKAROUNDS);
+  jmime_init();
 
   GMimeMessage *message = jmime_message_from_path(argv[1]);
   if (!message)
@@ -25,7 +25,7 @@ int main (int argc, char *argv[]) {
   g_printf("%s\n", json_message);
   g_free(json_message);
 
-  g_mime_shutdown ();
+  jmime_shutdown();
 
   return 0;
 }

@@ -1,3 +1,6 @@
+void jmime_init();
+void jmime_shutdown();
+
 GMimeMessage *jmime_message_from_path(char *path);
 GMimeMessage *jmime_message_from_file(FILE *fd);
 
