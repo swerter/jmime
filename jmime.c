@@ -7,7 +7,7 @@
 
 
 #define UTF8_CHARSET "UTF-8"
-#define MAX_EMBEDDED_INLINE_ATTACHMENT 65536
+#define MAX_EMBEDDED_INLINE_ATTACHMENT_SIZE 65536
 #define RECURSION_LIMIT 30
 #define CITATION_COLOUR 16711680
 
@@ -207,7 +207,7 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
 
     json_object_set_number(attachment_object, "size", attachment_stream_contents->len);
 
-    if (may_embed_data && (attachment_stream_contents->len < MAX_EMBEDDED_INLINE_ATTACHMENT)) {
+    if (may_embed_data && (attachment_stream_contents->len < MAX_EMBEDDED_INLINE_ATTACHMENT_SIZE)) {
       char *attachment_data = g_base64_encode(attachment_stream_contents->data, attachment_stream_contents->len);
       json_object_set_string(attachment_object, "data", attachment_data);
       g_free(attachment_data);
