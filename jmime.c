@@ -163,9 +163,10 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
         g_ascii_strcasecmp(disp->disposition, GMIME_DISPOSITION_ATTACHMENT))
       return;
 
+    JSON_Array *attachments_array = json_value_get_array(fdata->attachments);
+
     JSON_Value *attachment_value = json_value_init_object();
     JSON_Object *attachment_object = json_value_get_object(attachment_value);
-    JSON_Array *attachments_array = json_value_get_array(fdata->attachments);
 
     char *disposition_string = g_ascii_strdown(disp->disposition, -1);
     json_object_set_string(attachment_object, "disposition", disposition_string);
@@ -255,6 +256,47 @@ static void collector_foreach_callback(GMimeObject *parent, GMimeObject *part, g
 }
 
 
+static unsigned int collect_addresses(InternetAddressList *list, JSON_Value *addresses_val) {
+
+    JSON_Array *addresses_array = json_value_get_array(addresses_val);
+    InternetAddress *address;
+
+    int i = 0;
+    int l = internet_address_list_length (list);
+    unsigned int n = 0;
+
+    for (; i < l; i++) {
+      address = internet_address_list_get_address(list, i);
+
+      if (INTERNET_ADDRESS_IS_GROUP(address)) {
+          InternetAddressGroup *group = INTERNET_ADDRESS_GROUP (address);
+          InternetAddressList *group_list = internet_address_group_get_members (group);
+
+          if (group_list == NULL)
+            continue;
+
+        n += collect_addresses(group_list, addresses_val);
+
+      } else if (INTERNET_ADDRESS_IS_MAILBOX(address)) {
+          InternetAddressMailbox *mailbox = INTERNET_ADDRESS_MAILBOX(address);
+          const char *name = internet_address_get_name(address);
+          const char *address = internet_address_mailbox_get_addr(mailbox);
+
+          JSON_Value *address_value = json_value_init_object();
+          JSON_Object *address_object = json_value_get_object(address_value);
+
+          json_object_set_string(address_object, "name", name);
+          json_object_set_string(address_object, "address", address);
+          json_array_append_value(addresses_array, address_value);
+          n++;
+      }
+    }
+
+    return n;
+}
+
+
+
 /*
  *
  *
@@ -263,46 +305,86 @@ char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies) {
   JSON_Value *root_value = json_value_init_object();
   JSON_Object *root_object = json_value_get_object(root_value);
 
-  JSON_Value *headers_value = json_value_init_object();
-  JSON_Object *headers_object = json_value_get_object(headers_value);
-  json_object_set_value(root_object, "headers", headers_value);
+  json_object_set_string(root_object, "messageId", g_mime_message_get_message_id(message));
 
-  json_object_set_string(headers_object, "messageId", g_mime_message_get_message_id(message));
-  json_object_set_string(headers_object, "from", g_mime_message_get_sender(message));
+  // From
+  const char *from = g_mime_message_get_sender(message);
+  InternetAddressList *from_addresses = internet_address_list_parse_string (from);
+  if (from_addresses) {
+    if (internet_address_list_length(from_addresses)) {
+      InternetAddress *from_address = internet_address_list_get_address(from_addresses, 0);
+      if (from_address) {
+        InternetAddressMailbox *from_mailbox = INTERNET_ADDRESS_MAILBOX(from_address);
+        const char *name = internet_address_get_name(from_address);
+        const char *address = internet_address_mailbox_get_addr(from_mailbox);
+        if (address) {
+          JSON_Value *from_value = json_value_init_object();
+          JSON_Object *from_object = json_value_get_object(from_value);
+          json_object_set_string(from_object, "name", name);
+          json_object_set_string(from_object, "address", address);
+          json_object_set_value(root_object, "from", from_value);
+        }
+      }
+    }
+    g_object_unref (from_addresses);
+  }
 
+  // Reply-To
   const char *reply_to_string = g_mime_message_get_reply_to (message);
-  if (reply_to_string)
-    json_object_set_string(headers_object, "replyTo", reply_to_string);
+  if (reply_to_string) {
+    InternetAddressList *reply_to_addresses_list = internet_address_list_parse_string (reply_to_string);
+    if (reply_to_addresses_list && internet_address_list_length(reply_to_addresses_list)) {
+      JSON_Value *reply_to_addresses = json_value_init_array();
+      if (collect_addresses(reply_to_addresses_list, reply_to_addresses)) {
+        json_object_set_value(root_object, "replyTo", reply_to_addresses);
+      } else {
+        json_value_free(reply_to_addresses);
+      }
+    }
+    g_object_unref(reply_to_addresses_list);
+  }
 
-  // To:
+  // To
   InternetAddressList *recipients_to = g_mime_message_get_recipients (message, GMIME_RECIPIENT_TYPE_TO);
-  char *recipients_to_string = internet_address_list_to_string(recipients_to, FALSE);
-  if (recipients_to_string)
-    json_object_set_string(headers_object, "to", recipients_to_string);
-  g_free(recipients_to_string);
+  if (recipients_to && internet_address_list_length(recipients_to)) {
+    JSON_Value *addresses_recipients_to = json_value_init_array();
+    if (collect_addresses(recipients_to, addresses_recipients_to)) {
+      json_object_set_value(root_object, "to", addresses_recipients_to);
+    } else {
+      json_value_free(addresses_recipients_to);
+    }
+  }
 
-  // CC:
+  // Cc
   InternetAddressList *recipients_cc = g_mime_message_get_recipients (message, GMIME_RECIPIENT_TYPE_CC);
-  char *recipients_cc_string = internet_address_list_to_string(recipients_cc, FALSE);
-  if (recipients_cc_string)
-    json_object_set_string(headers_object, "cc", recipients_cc_string);
-  g_free(recipients_cc_string);
+  if (recipients_cc && internet_address_list_length(recipients_cc)) {
+    JSON_Value *addresses_recipients_cc = json_value_init_array();
+    if (collect_addresses(recipients_cc, addresses_recipients_cc)) {
+      json_object_set_value(root_object, "to", addresses_recipients_cc);
+    } else {
+      json_value_free(addresses_recipients_cc);
+    }
+  }
 
   // Bcc (on sent messages)
   InternetAddressList *recipients_bcc = g_mime_message_get_recipients (message, GMIME_RECIPIENT_TYPE_BCC);
-  char *recipients_bcc_string = internet_address_list_to_string(recipients_bcc, FALSE);
-  if (recipients_bcc_string)
-    json_object_set_string(headers_object, "bcc", recipients_bcc_string);
-  g_free(recipients_bcc_string);
+  if (recipients_bcc && internet_address_list_length(recipients_bcc)) {
+    JSON_Value *addresses_recipients_bcc = json_value_init_array();
+    if (collect_addresses(recipients_bcc, addresses_recipients_bcc)) {
+      json_object_set_value(root_object, "to", addresses_recipients_bcc);
+    } else {
+      json_value_free(addresses_recipients_bcc);
+    }
+  }
 
-  json_object_set_string(headers_object, "subject", g_mime_message_get_subject(message));
+  json_object_set_string(root_object, "subject", g_mime_message_get_subject(message));
 
   char *message_date = g_mime_message_get_date_as_string(message);
-  json_object_set_string(headers_object, "date", message_date);
+  json_object_set_string(root_object, "date", message_date);
   g_free(message_date);
 
-  json_object_set_string(headers_object, "inReplyTo", g_mime_object_get_header (GMIME_OBJECT (message), "In-reply-to"));
-  json_object_set_string(headers_object, "references", g_mime_object_get_header (GMIME_OBJECT (message), "References"));
+  json_object_set_string(root_object, "inReplyTo", g_mime_object_get_header (GMIME_OBJECT (message), "In-reply-to"));
+  json_object_set_string(root_object, "references", g_mime_object_get_header (GMIME_OBJECT (message), "References"));
 
   PartCollectorCallbackData *part_collector;
 
