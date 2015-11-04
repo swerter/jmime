@@ -40,7 +40,7 @@ void jmime_shutdown();
 GMimeMessage *jmime_message_from_path(char *path);
 GMimeMessage *jmime_message_from_file(FILE *fd);
 
-char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies);
+char *jmime_message_to_json(GMimeMessage *message);
 
 GByteArray *jmime_message_get_attachment_data(GMimeMessage* message, char* disposition, unsigned int part_id, char* name);
 
@@ -316,7 +316,7 @@ static unsigned int collect_addresses(InternetAddressList *list, JSON_Value *add
  *
  *
  */
-char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies) {
+char *jmime_message_to_json(GMimeMessage *message) {
   JSON_Value *root_value = json_value_init_object();
   JSON_Object *root_object = json_value_get_object(root_value);
 
@@ -401,37 +401,33 @@ char *jmime_message_to_json(GMimeMessage *message, gboolean collect_bodies) {
   json_object_set_string(root_object, "inReplyTo", g_mime_object_get_header (GMIME_OBJECT (message), "In-reply-to"));
   json_object_set_string(root_object, "references", g_mime_object_get_header (GMIME_OBJECT (message), "References"));
 
-  PartCollectorCallbackData *part_collector;
+  PartCollectorCallbackData *part_collector = g_malloc(sizeof(PartCollectorCallbackData));
+  part_collector->bodies = json_value_init_array();
+  part_collector->attachments = json_value_init_array();
+  part_collector->recursion_depth = 0;
+  part_collector->part_id = 0;
 
-  if (collect_bodies)  {
-    part_collector = g_malloc(sizeof(PartCollectorCallbackData));
-    part_collector->bodies = json_value_init_array();
-    part_collector->attachments = json_value_init_array();
-    part_collector->recursion_depth = 0;
-    part_collector->part_id = 0;
+  // Collect parts
+  g_mime_message_foreach(message, collector_foreach_callback, part_collector);
 
-    // Collect parts
-    g_mime_message_foreach(message, collector_foreach_callback, part_collector);
-
-    // Use found bodies, and if none, destroy the array
-    if (json_array_get_count(json_value_get_array(part_collector->bodies)) > 0) {
-      json_object_set_value(root_object, "bodies", part_collector->bodies);
-    } else {
-      json_value_free(part_collector->bodies);
-    }
-
-    // Use found attachments, and if none, destroy the array
-    if (json_array_get_count(json_value_get_array(part_collector->attachments)) > 0) {
-      json_object_set_value(root_object, "attachments", part_collector->attachments);
-    } else {
-      json_value_free(part_collector->attachments);
-    }
+  // Use found bodies, and if none, destroy the array
+  if (json_array_get_count(json_value_get_array(part_collector->bodies)) > 0) {
+    json_object_set_value(root_object, "bodies", part_collector->bodies);
+  } else {
+    json_value_free(part_collector->bodies);
   }
+
+  // Use found attachments, and if none, destroy the array
+  if (json_array_get_count(json_value_get_array(part_collector->attachments)) > 0) {
+    json_object_set_value(root_object, "attachments", part_collector->attachments);
+  } else {
+    json_value_free(part_collector->attachments);
+  }
+
 
   char *serialized_string = json_serialize_to_string(root_value);
 
-  if (collect_bodies)
-    g_free(part_collector);
+  g_free(part_collector);
 
   json_value_free(root_value);
 
