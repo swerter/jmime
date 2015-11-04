@@ -1,7 +1,6 @@
 CC?=clang
 NOOUT=2>&1 >/dev/null
-GMIME_LIB_PATH=-ggdb3 `pkg-config --cflags --libs gmime-2.6`
-INCLUDES=-I$(GMIME_LIB_PATH)
+INCLUDES=-I`pkg-config --cflags --libs gmime-2.6 gumbo`
 OPTFLAGS?=-O3 -fPIC -std=c99 -Wall
 CFLAGS=$(OPTFLAGS) $(INCLUDES)
 LDFLAGS=

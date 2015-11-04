@@ -4,12 +4,14 @@
 #include <locale.h>
 #include <errno.h>
 #include "parson/parson.h"
+#include <gumbo.h>
 
 
 #define UTF8_CHARSET "UTF-8"
 #define MAX_EMBEDDED_INLINE_ATTACHMENT_SIZE 65536
 #define RECURSION_LIMIT 30
 #define CITATION_COLOUR 16711680
+#define MAX_HTML_PREVIEW_LENGTH 512
 
 
 typedef struct PartCollectorCallbackData {
@@ -54,6 +56,8 @@ static void collector_foreach_callback(GMimeObject *parent, GMimeObject *part, g
 static void extract_attachment(GMimeObject *part, AttachmentCollectorData *a_data);
 static void attachment_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data);
 
+static GString *extract_text(const GumboNode* node);
+static GString *html_to_text(char *html);
 
 /*
  *
@@ -87,15 +91,15 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     JSON_Array *bodies_array = json_value_get_array(fdata->bodies);
 
     GMimeStream *mem_stream = g_mime_stream_mem_new();
-    g_mime_stream_mem_set_owner ((GMimeStreamMem *) mem_stream, TRUE);
+    g_mime_stream_mem_set_owner (GMIME_STREAM_MEM(mem_stream), TRUE);
 
     GMimeStreamFilter *mem_stream_filtered;
-    mem_stream_filtered = (GMimeStreamFilter *) g_mime_stream_filter_new(mem_stream);
+    mem_stream_filtered = GMIME_STREAM_FILTER(g_mime_stream_filter_new(mem_stream));
 
     const char *charset = g_mime_object_get_content_type_parameter (part, "charset");
     if (charset && g_ascii_strcasecmp(charset, UTF8_CHARSET)) {
       GMimeFilter *utf8_charset_filter = g_mime_filter_charset_new(charset, UTF8_CHARSET);
-      g_mime_stream_filter_add(GMIME_STREAM_FILTER(mem_stream_filtered), utf8_charset_filter);
+      g_mime_stream_filter_add(mem_stream_filtered, utf8_charset_filter);
       g_object_unref(utf8_charset_filter);
     }
 
@@ -124,17 +128,28 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     }
 
 
-    GMimeDataWrapper *wrapper = g_mime_part_get_content_object ((GMimePart *) part);
+    GMimeDataWrapper *wrapper = g_mime_part_get_content_object (GMIME_PART(part));
 
-    g_mime_data_wrapper_write_to_stream(wrapper, (GMimeStream *) mem_stream_filtered);
+    g_mime_data_wrapper_write_to_stream(wrapper, GMIME_STREAM(mem_stream_filtered));
 
     // Freed by the mem_stream on its own (owner) [transfer none]
-    GByteArray *part_content = g_mime_stream_mem_get_byte_array((GMimeStreamMem *) mem_stream);
+    GByteArray *part_content = g_mime_stream_mem_get_byte_array(GMIME_STREAM_MEM(mem_stream));
 
     char *content_data = g_strndup((const gchar *) part_content->data, part_content->len);
 
     g_object_unref(mem_stream_filtered);
     g_object_unref(mem_stream);
+
+
+    // HTML safe preview of the text content
+    GString *html_stripped_data = html_to_text(content_data);
+
+    if (html_stripped_data->len > MAX_HTML_PREVIEW_LENGTH)
+      g_string_truncate(html_stripped_data, MAX_HTML_PREVIEW_LENGTH);
+
+    json_object_set_string(body_object, "preview", html_stripped_data->str);
+    g_string_free(html_stripped_data, TRUE);
+
 
     json_object_set_string(body_object, "content", content_data);
     g_free(content_data);
@@ -173,12 +188,12 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     // JSON set_string will make a copy of the string, so we can free the original
     g_free(disposition_string);
 
-    const char *filename = g_mime_part_get_filename((GMimePart *) part);
+    const char *filename = g_mime_part_get_filename(GMIME_PART(part));
     // Attachment without a filename is not really useful
     if (!g_ascii_strcasecmp(disposition_string, GMIME_DISPOSITION_ATTACHMENT) && !filename)
       return;
 
-    const char* content_id = g_mime_part_get_content_id ((GMimePart *) part);
+    const char* content_id = g_mime_part_get_content_id (GMIME_PART(part));
     gboolean may_embed_data = FALSE;
 
     if (!g_ascii_strcasecmp(disposition_string, GMIME_DISPOSITION_INLINE)) {
@@ -201,12 +216,12 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     json_object_set_string(attachment_object, "filename", filename);
     json_object_set_number(attachment_object, "partId", fdata->part_id);
 
-    GMimeDataWrapper *attachment_wrapper = g_mime_part_get_content_object ((GMimePart *) part);
+    GMimeDataWrapper *attachment_wrapper = g_mime_part_get_content_object (GMIME_PART(part));
     GMimeStream *attachment_mem_stream = g_mime_stream_mem_new();
-    g_mime_stream_mem_set_owner ((GMimeStreamMem *) attachment_mem_stream, TRUE);
+    g_mime_stream_mem_set_owner (GMIME_STREAM_MEM(attachment_mem_stream), TRUE);
     g_mime_data_wrapper_write_to_stream(attachment_wrapper, attachment_mem_stream);
 
-    GByteArray *attachment_stream_contents = g_mime_stream_mem_get_byte_array((GMimeStreamMem *) attachment_mem_stream);
+    GByteArray *attachment_stream_contents = g_mime_stream_mem_get_byte_array(GMIME_STREAM_MEM(attachment_mem_stream));
 
     json_object_set_number(attachment_object, "size", attachment_stream_contents->len);
 
@@ -463,21 +478,21 @@ static void extract_attachment(GMimeObject *part, AttachmentCollectorData *a_dat
     return;
 
   // Either the filename or the content Id has to match, otherwise bail.
-  const char *filename = g_mime_part_get_filename((GMimePart *) part);
-  const char *content_id = g_mime_part_get_content_id((GMimePart *) part);
+  const char *filename = g_mime_part_get_filename(GMIME_PART(part));
+  const char *content_id = g_mime_part_get_content_id(GMIME_PART(part));
   if (!(filename && !g_ascii_strcasecmp(filename, a_data->name)) &&
       !(content_id && !g_ascii_strcasecmp(content_id, a_data->name)))
     return;
 
-  GMimeDataWrapper *attachment_wrapper = g_mime_part_get_content_object ((GMimePart *) part);
+  GMimeDataWrapper *attachment_wrapper = g_mime_part_get_content_object (GMIME_PART(part));
   GMimeStream *attachment_mem_stream = g_mime_stream_mem_new();
 
   // We want to keep the byte array after we close the stream
-  g_mime_stream_mem_set_owner ((GMimeStreamMem *) attachment_mem_stream, FALSE);
+  g_mime_stream_mem_set_owner (GMIME_STREAM_MEM(attachment_mem_stream), FALSE);
 
   g_mime_data_wrapper_write_to_stream(attachment_wrapper, attachment_mem_stream);
 
-  a_data->content = g_mime_stream_mem_get_byte_array((GMimeStreamMem *) attachment_mem_stream);
+  a_data->content = g_mime_stream_mem_get_byte_array(GMIME_STREAM_MEM(attachment_mem_stream));
 
   g_object_unref(attachment_mem_stream);
 }
@@ -581,7 +596,7 @@ GMimeMessage *jmime_message_from_file(FILE *file) {
   GMimeStream *stream = g_mime_stream_file_new (file);
 
   // Being owner of the stream will automatically close the file when released
-  g_mime_stream_file_set_owner((GMimeStreamFile *) stream, TRUE);
+  g_mime_stream_file_set_owner(GMIME_STREAM_FILE(stream), TRUE);
 
   if (!stream) {
     g_printerr("file stream could not be opened\r\n");
@@ -597,4 +612,51 @@ GMimeMessage *jmime_message_from_file(FILE *file) {
   }
 
   return message;
+}
+
+
+/*
+ *
+ *
+ */
+static GString *extract_text(const GumboNode* node) {
+  if (node->type == GUMBO_NODE_TEXT) {
+    return g_string_new(node->v.text.text);
+
+  } else if (node->type == GUMBO_NODE_ELEMENT &&
+             node->v.element.tag != GUMBO_TAG_SCRIPT &&
+             node->v.element.tag != GUMBO_TAG_STYLE) {
+
+    const GumboVector* children = &node->v.element.children;
+    GString *contents = g_string_new(NULL);
+
+    for (unsigned int i = 0; i < children->length; ++i) {
+      GString *text = extract_text((GumboNode*) children->data[i]);
+      g_string_assign(text, g_strstrip((gchar *) text->str));
+
+      if ((i > 0) && (text->len > 0))
+        g_string_append_c(contents, ' ');
+
+      g_string_append(contents, text->str);
+      g_string_free(text, TRUE);
+    }
+    return contents;
+  } else {
+    return g_string_new(NULL);
+  }
+}
+
+
+/*
+ *
+ *
+ */
+static GString *html_to_text(char *html) {
+  GumboOutput* output = gumbo_parse_with_options(&kGumboDefaultOptions, html, strlen(html));
+  if (output) {
+    GString *cleaned_text = extract_text(output->root);
+    gumbo_destroy_output(&kGumboDefaultOptions, output);
+    return cleaned_text;
+  }
+  return g_string_new(NULL);
 }
