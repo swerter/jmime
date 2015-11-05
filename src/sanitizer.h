@@ -1,0 +1,1 @@
+GString* sanitize(GumboNode*);

@@ -1,19 +1,21 @@
 CC?=clang
 NOOUT=2>&1 >/dev/null
 INCLUDES=-I`pkg-config --cflags --libs gmime-2.6 gumbo`
-OPTFLAGS?=-O3 -fPIC -std=c99 -Wall
+OPTFLAGS?=-O3 -fPIC -std=c99 -Wall -g
 CFLAGS=$(OPTFLAGS) $(INCLUDES)
 LDFLAGS=
 
-all: version check-cc jmime-examples
+examples: version check-cc jmime-examples
 
 version:
 	@cat VERSION
 
 jmime-examples:
 	@mkdir -p examples/bin $(NOOUT)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) parson/parson.c jmime.c examples/jmime_json.c -o examples/bin/jmime_json
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) parson/parson.c jmime.c examples/jmime_attachment.c -o examples/bin/jmime_attachment
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) src/parson/parson.c src/*.c examples/jmime_json.c -o examples/bin/jmime_json
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS) src/parson/parson.c src/*.c examples/jmime_attachment.c -o examples/bin/jmime_attachment
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTFLAGS) `pkg-config --cflags --libs gmime-2.6 gumbo` examples/sanitizer.c -o examples/bin/sanitizer
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTFLAGS) `pkg-config --cflags --libs gmime-2.6 gumbo` examples/textizer.c -o examples/bin/textizer
 
 check-cc:
 	@hash clang 2>/dev/null || \
