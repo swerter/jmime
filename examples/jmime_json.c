@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
   if (!message)
     return 1;
 
-  char *json_message = jmime_message_to_json(message);
+  char *json_message = jmime_message_to_json(message, TRUE);
   g_object_unref(message);
 
   if (!json_message)
