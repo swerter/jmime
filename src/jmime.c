@@ -256,6 +256,7 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
         return;
     }
 
+
     json_object_set_string(attachment_object, "filename", filename);
     json_object_set_number(attachment_object, "partId", fdata->part_id);
 
@@ -268,11 +269,22 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
 
     json_object_set_number(attachment_object, "size", attachment_stream_contents->len);
 
+    // Get the contentType in lowercase
+    gchar *content_type_str = g_mime_content_type_to_string(content_type);
+    gchar *content_type_str_lowercase = g_ascii_strdown(content_type_str, -1);
+    json_object_set_string(attachment_object, "contentType", content_type_str_lowercase);
+    g_free(content_type_str);
+
+    // We'll convert inline attachments with contentId to data URIs
     if (may_embed_data && (attachment_stream_contents->len < MAX_EMBEDDED_INLINE_ATTACHMENT_SIZE)) {
       gchar *attachment_data = g_base64_encode(attachment_stream_contents->data, attachment_stream_contents->len);
-      json_object_set_string(attachment_object, "data", attachment_data);
+      gchar *data_uri = g_strjoin(NULL, "data:", content_type_str_lowercase, ";base64,", attachment_data, NULL);
       g_free(attachment_data);
+      json_object_set_string(attachment_object, "dataURI", data_uri);
+      g_free(data_uri);
     }
+
+    g_free(content_type_str_lowercase);
     g_object_unref(attachment_mem_stream);
 
     json_array_append_value(attachments_array, attachment_value);

@@ -7,7 +7,7 @@ static char* permitted_tags            = "|a|abbr|acronym|address|area|b|bdo|bod
 static char* permitted_attributes      = "|href|src|style|color|bgcolor|width|height|colspan|rowspan|cellspacing|cellpadding|border|align|valign|dir|";
 static char* protocol_attributes       = "|href|src|";
 static char* protocol_separators_regex = ":|(&#0*58)|(&#x70)|(&#x0*3a)|(%|&#37;)3A";
-static char* permitted_protocols       = "|ftp|http|https|irc|mailto|news|gopher|nntp|telnet|webcal|xmpp|callto|feed|";
+static char* permitted_protocols       = "|ftp|http|https|cid|data|irc|mailto|news|gopher|nntp|telnet|webcal|xmpp|callto|feed|";
 static char* empty_tags                = "|area|br|col|hr|img|input|";
 static char* special_handling          = "|html|body|";
 static char* no_entity_sub             = "|style|";
@@ -113,14 +113,11 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities) {
   gboolean is_protocol_attribute  = g_regex_match_simple(key_pattern, protocol_attributes, G_REGEX_CASELESS, 0);
   g_free(key_pattern);
 
-
   if (!is_permitted_attribute)
     return g_string_new(NULL);
 
   gchar *attr_value = g_strdup(at->value);
   g_strstrip(attr_value);
-
-
 
   if (is_protocol_attribute) {
     gchar **protocol_parts = g_regex_split_simple(protocol_separators_regex, attr_value, G_REGEX_CASELESS, 0);
