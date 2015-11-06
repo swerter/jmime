@@ -275,7 +275,8 @@ static void collect_part(GMimeObject *part, PartCollectorCallbackData *fdata) {
     json_object_set_string(attachment_object, "contentType", content_type_str_lowercase);
     g_free(content_type_str);
 
-    // We'll convert inline attachments with contentId to data URIs
+    // We'll convert small inline attachments with contentId to data URIs. The others must
+    // be requested as linked images / attachments.
     if (may_embed_data && (attachment_stream_contents->len < MAX_EMBEDDED_INLINE_ATTACHMENT_SIZE)) {
       gchar *attachment_data = g_base64_encode(attachment_stream_contents->data, attachment_stream_contents->len);
       gchar *data_uri = g_strjoin(NULL, "data:", content_type_str_lowercase, ";base64,", attachment_data, NULL);
