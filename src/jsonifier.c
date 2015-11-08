@@ -242,7 +242,7 @@ GString *gmime_message_to_json(GMimeMessage *message, gboolean include_content) 
           }
         }
         json_object_set_string(json_att_obj, "filename", att_body->filename);
-        json_object_set_number(json_att_obj, "size", att_body->content->len);
+        json_object_set_number(json_att_obj, "size",     att_body->content->len);
 
         json_array_append_value(json_atts_array, json_att_val);
       }
@@ -271,6 +271,7 @@ GString *gmime_message_to_json(GMimeMessage *message, gboolean include_content) 
           }
         }
         json_object_set_string(json_inl_obj, "filename", inl_body->filename);
+        json_object_set_number(json_inl_obj, "size",     inl_body->content->len);
 
         json_array_append_value(json_atts_array, json_inl_val);
       }
@@ -298,6 +299,8 @@ GString *gmime_message_to_json(GMimeMessage *message, gboolean include_content) 
           }
         }
         json_object_set_string(json_alt_obj, "filename", alt_body->filename);
+        json_object_set_number(json_alt_obj, "size",     alt_body->content->len);
+
 
         json_array_append_value(json_atts_array, json_alt_val);
       }
