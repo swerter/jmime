@@ -1,6 +1,6 @@
 #include <stdlib.h>
+#include <glib.h>
 #include <glib/gprintf.h>
-#include <gmime/gmime.h>
 #include "../src/jmime.h"
 
 int main(int argc, char *argv[]) {
