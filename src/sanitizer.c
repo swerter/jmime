@@ -2,6 +2,7 @@
 #include <glib.h>
 #include <glib/gprintf.h>
 #include <gumbo.h>
+#include "parts.h"
 
 static char* permitted_tags            = "|a|abbr|acronym|address|area|b|bdo|body|big|blockquote|br|button|caption|center|cite|code|col|colgroup|dd|del|dfn|dir|div|dl|dt|em|fieldset|font|form|h1|h2|h3|h4|h5|h6|hr|i|img|input|ins|kbd|label|legend|li|map|menu|ol|optgroup|option|p|pre|q|s|samp|select|small|span|style|strike|strong|sub|sup|table|tbody|td|textarea|tfoot|th|thead|u|tr|tt|u|ul|var|";
 static char* permitted_attributes      = "|href|src|style|color|bgcolor|width|height|colspan|rowspan|cellspacing|cellpadding|border|align|valign|dir|";
@@ -13,18 +14,17 @@ static char* special_handling          = "|html|body|";
 static char* no_entity_sub             = "|style|";
 
 
-// forward declaration
-GString* sanitize(GumboNode*);
+GString* sanitize(GumboNode* node, GPtrArray* inlines_ary);
 
 
 static GString *replace_all(GString *orig_str, const gchar* s1, const gchar *s2) {
   gchar *escaped_s1 = g_regex_escape_string (s1, -1);
   GRegex *regex = g_regex_new (escaped_s1, 0, 0, NULL);
-  gchar *new_string = g_regex_replace (regex, orig_str->str, -1, 0, s2, 0, NULL);
+  gchar *new_string =  g_regex_replace_literal(regex, orig_str->str, -1, 0, s2, 0, NULL);
   g_regex_unref(regex);
   g_free(escaped_s1);
 
-  g_string_assign (orig_str, new_string);
+  g_string_assign(orig_str, new_string);
 
   g_free(new_string);
   return orig_str;
@@ -98,7 +98,7 @@ static GString *build_doctype(GumboNode *node) {
 }
 
 
-static GString *build_attributes(GumboAttribute *at, gboolean no_entities) {
+static GString *build_attributes(GumboAttribute *at, gboolean no_entities, GPtrArray *inlines_ary) {
 
   /*
    *
@@ -111,6 +111,8 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities) {
 
   gboolean is_permitted_attribute = g_regex_match_simple(key_pattern, permitted_attributes, G_REGEX_CASELESS, 0);
   gboolean is_protocol_attribute  = g_regex_match_simple(key_pattern, protocol_attributes, G_REGEX_CASELESS, 0);
+  gchar *cid_content_id = NULL;
+
   g_free(key_pattern);
 
   if (!is_permitted_attribute)
@@ -121,6 +123,9 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities) {
 
   if (is_protocol_attribute) {
     gchar **protocol_parts = g_regex_split_simple(protocol_separators_regex, attr_value, G_REGEX_CASELESS, 0);
+
+    if (!g_ascii_strcasecmp(protocol_parts[0], "cid"))
+      cid_content_id = g_strdup(protocol_parts[1]);
 
     gchar *attr_protocol = g_strjoin(NULL, "|", protocol_parts[0], "|", NULL);
     g_strfreev(protocol_parts);
@@ -135,6 +140,18 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities) {
       g_free(attr_value);
       return g_string_new(NULL);
     }
+  }
+
+  if (cid_content_id && inlines_ary && inlines_ary->len) {
+    for (int i = 0; i < inlines_ary->len; i++) {
+      CollectedPart *inline_body = g_ptr_array_index(inlines_ary, i);
+      if (!g_ascii_strcasecmp(inline_body->content_id, cid_content_id)) {
+        gchar *base64_data = g_base64_encode((const guchar *) inline_body->content->data, inline_body->content->len);
+        g_free(attr_value);
+        attr_value = g_strjoin(NULL, "data:", inline_body->content_type, ";base64,", base64_data, NULL);
+      }
+    }
+    g_free(cid_content_id);
   }
 
   GString *atts = g_string_new(" ");
@@ -172,18 +189,18 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities) {
 
 
 
-static GString *sanitize_contents(GumboNode* node) {
+static GString *sanitize_contents(GumboNode* node, GPtrArray *inlines_ary) {
   GString *contents = g_string_new(NULL);
   GString *tagname  = get_tag_name(node);
 
-  char *key = g_strjoin(NULL, "|", tagname, "|", NULL);
+  gchar *key = g_strjoin(NULL, "|", tagname->str, "|", NULL);
   g_string_free(tagname, TRUE);
 
+  // Since we include pipes (|) we have to escape the regex string
   gchar *key_pattern = g_regex_escape_string(key, -1);
   g_free(key);
 
   gboolean no_entity_substitution = g_regex_match_simple(key_pattern, no_entity_sub, G_REGEX_CASELESS, 0);
-
   g_free(key_pattern);
 
   // build up result for each child, recursively if need be
@@ -204,7 +221,7 @@ static GString *sanitize_contents(GumboNode* node) {
     } else if (child->type == GUMBO_NODE_ELEMENT ||
                child->type == GUMBO_NODE_TEMPLATE) {
 
-      GString *child_ser = sanitize(child);
+      GString *child_ser = sanitize(child, inlines_ary);
       g_string_append(contents, child_ser->str);
       g_string_free(child_ser, TRUE);
 
@@ -220,11 +237,11 @@ static GString *sanitize_contents(GumboNode* node) {
 }
 
 
-GString *sanitize(GumboNode* node) {
+GString *sanitize(GumboNode* node, GPtrArray* inlines_ary) {
   // special case the document node
   if (node->type == GUMBO_NODE_DOCUMENT) {
     GString *results = build_doctype(node);
-    GString *node_ser = sanitize_contents(node);
+    GString *node_ser = sanitize_contents(node, inlines_ary);
     g_string_append(results, node_ser->str);
     g_string_free(node_ser, TRUE);
     return results;
@@ -236,9 +253,6 @@ GString *sanitize(GumboNode* node) {
   gchar *key_pattern = g_regex_escape_string(key, -1);
   g_free(key);
 
-  GString *close = g_string_new(NULL);
-  GString *closeTag = g_string_new(NULL);
-  GString *atts = g_string_new(NULL);
 
   gboolean need_special_handling     = g_regex_match_simple(key_pattern, special_handling,   G_REGEX_CASELESS, 0);
   gboolean is_empty_tag              = g_regex_match_simple(key_pattern, empty_tags,         G_REGEX_CASELESS, 0);
@@ -249,30 +263,29 @@ GString *sanitize(GumboNode* node) {
 
   if (!need_special_handling && !tag_permitted) {
     g_string_free(tagname, TRUE);
-    g_string_free(atts, TRUE);
-    g_string_free(close, TRUE);
-    g_string_free(closeTag, TRUE);
     return g_string_new(NULL);
   }
 
-  // // build attr string
+  GString *close = g_string_new(NULL);
+  GString *closeTag = g_string_new(NULL);
+  GString *atts = g_string_new(NULL);
+
   const GumboVector *attribs = &node->v.element.attributes;
   for (int i=0; i< attribs->length; ++i) {
     GumboAttribute* at = (GumboAttribute*)(attribs->data[i]);
-    GString *attsstr = build_attributes(at, no_entity_substitution);
+    GString *attsstr = build_attributes(at, no_entity_substitution, inlines_ary);
     g_string_append(atts, attsstr->str);
     g_string_free(attsstr, TRUE);
   }
 
-  // determine closing tag type
+
   if (is_empty_tag) {
     g_string_append_c(close, '/');
   } else {
     g_string_append_printf(closeTag, "</%s>", tagname->str);
   }
 
-  // serialize your contents
-  GString *contents = sanitize_contents(node);
+  GString *contents = sanitize_contents(node, inlines_ary);
 
   if (need_special_handling) {
     char *stripped = g_strndup(contents->str, contents->len);
@@ -282,7 +295,6 @@ GString *sanitize(GumboNode* node) {
     g_string_append(contents, "\n");
   }
 
-  // build results
   GString *results = g_string_new(NULL);
   g_string_append_printf(results, "<%s%s%s>", tagname->str, atts->str, close->str);
   g_string_free(atts, TRUE);

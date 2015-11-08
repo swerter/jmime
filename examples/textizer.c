@@ -23,7 +23,6 @@ int main(int argc, char *argv[]) {
 
   GumboOutput* output = gumbo_parse_with_options(&kGumboDefaultOptions, input, input_length);
 
-
   GString *textized_content = textize(output->root);
   gumbo_destroy_output(&kGumboDefaultOptions, output);
   // Do not destroy input before destroying Gumbo output, as it's being pointed at by Gumbo

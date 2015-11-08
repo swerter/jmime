@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <glib/gprintf.h>
 #include <gmime/gmime.h>
 #include "../src/jmime.h"
@@ -5,34 +6,30 @@
 int main (int argc, char *argv[]) {
 
   if (argc < 5) {
-    g_printerr ("usage: %s message_file [inline |attachment] name part_id\n", argv[0]);
-    return 1;
+    g_printerr ("usage: %s message_file part_id content_type out_file\n", argv[0]);
+    exit(EXIT_FAILURE);
   }
 
   jmime_init();
 
-  GMimeMessage *message = jmime_message_from_path(argv[1]);
-  if (!message)
-    return 1;
 
-  int part_id = g_ascii_strtoll(argv[4], NULL, 10);
+  int part_id = g_ascii_strtoll(argv[2], NULL, 10);
   if (!part_id) {
     g_printerr("part_id could not be parsed\r\n");
-    return 1;
+    exit(EXIT_FAILURE);
   }
 
-  GByteArray *attachment = jmime_message_get_attachment_data(message, argv[3], part_id, argv[2]);
-  g_object_unref(message);
+  GByteArray *attachment = jmime_get_part_data(argv[1], part_id, argv[3]);
   if (!attachment)
-    return 1;
+    exit(EXIT_FAILURE);
 
-  FILE *fout = fopen(argv[3], "wb");
+  FILE *fout = fopen(argv[4], "wb");
   if (!fout) {
-    g_printerr("file could not be opened for writing: %s\r\n", argv[3]);
-    return 1;
+    g_printerr("file could not be opened for writing: %s\r\n", argv[4]);
+    exit(EXIT_FAILURE);
   }
 
-  g_printf("Written %d bytes to file %s\r\n", attachment->len, argv[3]);
+  g_printf("Written %d bytes to file %s\r\n", attachment->len, argv[4]);
   fwrite(attachment->data, attachment->len, 1, fout);
   fclose(fout);
 
