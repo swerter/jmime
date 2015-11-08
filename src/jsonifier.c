@@ -242,6 +242,7 @@ GString *gmime_message_to_json(GMimeMessage *message, gboolean include_content) 
           }
         }
         json_object_set_string(json_att_obj, "filename", att_body->filename);
+        json_object_set_number(json_att_obj, "size", att_body->content->len);
 
         json_array_append_value(json_atts_array, json_att_val);
       }

@@ -361,6 +361,7 @@ GByteArray *gmime_message_get_part_data(GMimeMessage* message, guint part_id, gc
   g_mime_message_foreach(message, part_extractor_foreach_callback, a_data);
 
   GByteArray *content = a_data->content;
+  g_free(a_data->content_type);
   g_free(a_data);
 
   if (!content)
