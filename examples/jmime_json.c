@@ -12,13 +12,13 @@ int main(int argc, char *argv[]) {
 
   jmime_init();
 
-  char *json_message = jmime_get_json(argv[1], TRUE);
+  GString *json_message = jmime_get_json(argv[1], TRUE);
   if (!json_message)
     exit(EXIT_FAILURE);
 
   setbuf(stdout, NULL);
-  g_printf("%s\n", json_message);
-  g_free(json_message);
+  g_printf("%s\n", json_message->str);
+  g_string_free(json_message, TRUE);
 
   jmime_shutdown();
 

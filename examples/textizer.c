@@ -1,7 +1,8 @@
 #include <stdlib.h>
 #include <gumbo.h>
 #include <glib/gprintf.h>
-#include "../src/textizer.c"
+
+#include "../src/textizer.h"
 
 
 int main(int argc, char *argv[]) {

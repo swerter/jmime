@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <gumbo.h>
 #include <glib/gprintf.h>
-#include "../src/sanitizer.c"
+#include "../src/sanitizer.h"
 
 
 int main(int argc, char *argv[]) {

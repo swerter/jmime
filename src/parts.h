@@ -1,4 +1,3 @@
-
 typedef struct CollectedPart {
   guint      part_id;        // the depth within the message where this part is located
   gchar      *content_type;  // content type (text/html, text/plan etc.)
@@ -27,3 +26,8 @@ typedef struct PartExtractorData {
   GByteArray *content;
 } PartExtractorData;
 
+void free_collected_part(gpointer part);
+void free_part_collector(PartCollectorData *pcdata);
+
+CollectedPart*     new_collected_part(guint part_id);
+PartCollectorData* new_part_collector_data(void);
