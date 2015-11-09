@@ -1,13 +1,12 @@
 #include <glib.h>
 #include <gmime/gmime.h>
 #include <gumbo.h>
-
 #include "parson/parson.h"
 #include "parts.h"
-
 #include "collector.h"
 #include "sanitizer.h"
 #include "textizer.h"
+#include "utils.h"
 
 
 #define MAX_HTML_PREVIEW_LENGTH 512
@@ -236,7 +235,11 @@ GString *gmime_message_to_json(GMimeMessage *message, gboolean include_content) 
 
         if (!att_body->filename) {
           if (att_body->content_id) {
-            att_body->filename = g_strjoin(NULL, "_attachment_", att_body->content_id, ".", guess_content_type_extension(att_body->content_type), NULL);
+            if (gc_contains_c(att_body->content_id, '.')) {
+              att_body->filename = g_strjoin(NULL, "_attachment_", att_body->content_id, NULL);
+            } else {
+              att_body->filename = g_strjoin(NULL, "_attachment_", att_body->content_id, ".", guess_content_type_extension(att_body->content_type), NULL);
+            }
           } else {
             att_body->filename = g_strjoin(NULL, "_unnamed_attachment.", guess_content_type_extension(att_body->content_type), NULL);
           }
@@ -265,7 +268,11 @@ GString *gmime_message_to_json(GMimeMessage *message, gboolean include_content) 
 
         if (!inl_body->filename) {
           if (inl_body->content_id) {
-            inl_body->filename = g_strjoin(NULL, "_inline_", inl_body->content_id, ".", guess_content_type_extension(inl_body->content_type), NULL);
+            if (gc_contains_c(inl_body->content_id, '.')) {
+              inl_body->filename = g_strjoin(NULL, "_inline_", inl_body->content_id, NULL);
+            } else {
+              inl_body->filename = g_strjoin(NULL, "_inline_", inl_body->content_id, ".", guess_content_type_extension(inl_body->content_type), NULL);
+            }
           } else {
             inl_body->filename = g_strjoin(NULL, "_unnamed_inline_content.", guess_content_type_extension(inl_body->content_type), NULL);
           }

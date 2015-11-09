@@ -1,4 +1,12 @@
+#include <string.h>
 #include <glib.h>
+
+gboolean gc_contains_c(const gchar *str, const gchar c) {
+  for(int i = 0; i < strlen(str); i++)
+    if (str[i] == c)
+      return TRUE;
+  return FALSE;
+}
 
 // The stripping functions from glib do not remove tabs, newlines etc.,
 // so we define our owns that remove all whitespace.

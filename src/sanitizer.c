@@ -259,6 +259,14 @@ GString *sanitize(GumboNode* node, GPtrArray* inlines_ary) {
     g_string_free(attsstr, TRUE);
   }
 
+  if (node->type == GUMBO_NODE_ELEMENT) {
+    if ((node->v.element.tag == GUMBO_TAG_A) ||
+        (node->v.element.tag == GUMBO_TAG_FORM))
+      g_string_append(atts, " target=\"_blank\"");
+
+    if (node->v.element.tag == GUMBO_TAG_FORM)
+      g_string_append(atts, " onSubmit=\"return confirm('Do you really want to submit the form?');\"");
+  }
 
   if (is_empty_tag) {
     g_string_append_c(close, '/');

@@ -1,3 +1,5 @@
+gboolean gc_contains_c(const gchar *str, const gchar c);
+
 gchar *gc_strip(const gchar *text);
 gchar *gc_lstrip(const gchar* text);
 gchar *gc_rstrip(const gchar* text);
