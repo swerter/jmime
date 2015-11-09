@@ -265,7 +265,7 @@ GString *sanitize(GumboNode* node, GPtrArray* inlines_ary) {
       g_string_append(atts, " target=\"_blank\"");
 
     if (node->v.element.tag == GUMBO_TAG_FORM)
-      g_string_append(atts, " onSubmit=\"return confirm('This form submits to an external URL. Are you sure you want to proceed?');\"");
+      g_string_append(atts, " onSubmit=\"return confirm('This form will submit to an external URL. Are you sure you want to continue?');\"");
   }
 
   if (is_empty_tag) {
