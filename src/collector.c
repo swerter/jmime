@@ -240,7 +240,9 @@ static void collect_part(GMimeObject *part, PartCollectorData *fdata, gboolean m
     c_part->content = g_mime_stream_mem_get_byte_array(GMIME_STREAM_MEM(attachment_mem_stream));
     g_object_unref(attachment_mem_stream);
 
-    if (!g_ascii_strcasecmp(disposition->disposition, GMIME_DISPOSITION_INLINE)) {
+    // Some content may not have disposition defined so we need to determine better what it is
+    if ((disposition && !g_ascii_strcasecmp(disposition->disposition, GMIME_DISPOSITION_INLINE)) ||
+        g_mime_part_get_content_id(GMIME_PART(part))) {
       g_ptr_array_add(fdata->inlines, c_part);
     } else {
       // All other disposition should be kept within attachments
