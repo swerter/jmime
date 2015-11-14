@@ -1,1 +1,0 @@
-GString *textize(const GumboNode* node);

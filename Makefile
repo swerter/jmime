@@ -1,8 +1,7 @@
 CC?=clang
 NOOUT=2>&1 >/dev/null
-INCLUDES=-I`pkg-config --cflags --libs gmime-2.6 gumbo`
-OPTFLAGS?=-O3 -fPIC -std=c99 -Wall -g
-CFLAGS=$(OPTFLAGS) $(INCLUDES)
+CFLAGS=-O3 -fPIC -std=c99 -Wall -g
+CPPFLAGS=-O3 -fPIC -Wall -g
 LDFLAGS=
 
 examples: version check-cc jmime-examples
@@ -11,11 +10,20 @@ version:
 	@cat VERSION
 
 jmime-examples:
-	@mkdir -p examples/bin $(NOOUT)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS)  src/parson/parson.c src/*.c  examples/jmime_json.c        -o examples/bin/jmime_json
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTIONS)  src/parson/parson.c src/*.c  examples/jmime_attachment.c  -o examples/bin/jmime_attachment
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTFLAGS) `pkg-config --cflags --libs gmime-2.6 gumbo` src/utils.c  src/sanitizer.c  examples/sanitizer.c  -o examples/bin/sanitizer
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OPTFLAGS) `pkg-config --cflags --libs gmime-2.6 gumbo` src/utils.c  src/textizer.c   examples/textizer.c   -o examples/bin/textizer
+	@mkdir -p _build $(NOOUT)
+
+	gcc $(CFLAGS)   -c src/parson/parson.c -o _build/parson.o
+	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0 gmime-2.6 gumbo` -c src/jmime.c -o _build/jmime.o
+	g++ $(CPPFLAGS) -c src/xapian.cc -o _build/xapian.o
+	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_indexer.c -o _build/jmime_indexer.o
+	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_search.c -o _build/jmime_search.o
+	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_attachment.c -o _build/jmime_attachment.o
+	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_json.c -o _build/jmime_json.o
+
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_indexer.o -o _build/jmime_indexer
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_search.o -o _build/jmime_search
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_json.o -o _build/jmime_json
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_attachment.o -o _build/jmime_attachment
 
 check-cc:
 	@hash clang 2>/dev/null || \
@@ -25,4 +33,4 @@ check-cc:
 	exit 1)
 
 clean:
-	rm -rf examples/bin
+	rm -rf _build

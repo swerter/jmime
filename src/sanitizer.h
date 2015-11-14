@@ -1,1 +1,0 @@
-GString *sanitize(GumboNode* node, GPtrArray* inlines_ary);

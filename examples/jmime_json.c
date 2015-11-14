@@ -12,7 +12,8 @@ int main(int argc, char *argv[]) {
 
   jmime_init();
 
-  GString *json_message = jmime_get_json(argv[1], TRUE);
+  GString *json_message = NULL;
+  json_message = jmime_get_json(argv[1], TRUE);
   if (!json_message)
     exit(EXIT_FAILURE);
 

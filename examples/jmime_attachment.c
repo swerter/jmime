@@ -5,8 +5,8 @@
 
 int main (int argc, char *argv[]) {
 
-  if (argc < 5) {
-    g_printerr ("usage: %s message_file part_id content_type out_file\n", argv[0]);
+  if (argc < 4) {
+    g_printerr ("usage: %s message_file part_id out_file\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
@@ -19,7 +19,7 @@ int main (int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  GByteArray *attachment = jmime_get_part_data(argv[1], part_id, argv[3]);
+  GByteArray *attachment = jmime_get_part_data(argv[1], part_id);
   if (!attachment)
     exit(EXIT_FAILURE);
 
