@@ -4,28 +4,29 @@ CFLAGS=-O3 -fPIC -std=c99 -Wall -g
 CPPFLAGS=-O3 -fPIC -Wall -g
 LDFLAGS=
 
-examples: version check-cc jmime-examples
+tools: version check-cc jmime-tools
 
 version:
 	@cat VERSION
 
-jmime-examples:
+jmime-tools:
 	@mkdir -p _build $(NOOUT)
 
-	gcc $(CFLAGS)   -c src/parson/parson.c -o _build/parson.o
-	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0 gmime-2.6 gumbo` -c src/jmime.c -o _build/jmime.o
-	g++ $(CPPFLAGS) -c src/jxapian.cc -o _build/jxapian.o
-	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_index_maildir.c -o _build/jmime_index_maildir.o
-	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_index_message.c -o _build/jmime_index_message.o
-	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_search.c -o _build/jmime_search.o
-	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_attachment.c -o _build/jmime_attachment.o
-	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_json.c -o _build/jmime_json.o
+	gcc $(CFLAGS)   -c src/parson/parson.c 	-o _build/parson.o
+	g++ $(CPPFLAGS) -c src/jxapian.cc 			-o _build/jxapian.o `xapian-config --cxxflags`
+	gcc $(CFLAGS)   -c src/jmime.c 					-o _build/jmime.o   `pkg-config --cflags glib-2.0 gmime-2.6 gumbo`
 
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_index_maildir.o -o _build/jmime_index_maildir
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_index_message.o -o _build/jmime_index_message
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_search.o -o _build/jmime_search
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_json.o -o _build/jmime_json
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_attachment.o -o _build/jmime_attachment
+	gcc $(CFLAGS) -c tools/jmime_index_maildir.c  -o _build/jmime_index_maildir.o `pkg-config --cflags glib-2.0`
+	gcc $(CFLAGS) -c tools/jmime_index_message.c  -o _build/jmime_index_message.o `pkg-config --cflags glib-2.0`
+	gcc $(CFLAGS) -c tools/jmime_search.c 				-o _build/jmime_search.o        `pkg-config --cflags glib-2.0`
+	gcc $(CFLAGS) -c tools/jmime_attachment.c 		-o _build/jmime_attachment.o    `pkg-config --cflags glib-2.0`
+	gcc $(CFLAGS) -c tools/jmime_json.c 					-o _build/jmime_json.o          `pkg-config --cflags glib-2.0`
+
+	g++ $(CPPFLAGS) `pkg-config --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_index_maildir.o 	-o _build/jmime_index_maildir
+	g++ $(CPPFLAGS) `pkg-config --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_index_message.o 	-o _build/jmime_index_message
+	g++ $(CPPFLAGS) `pkg-config --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_search.o 				-o _build/jmime_search
+	g++ $(CPPFLAGS) `pkg-config --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_json.o 					-o _build/jmime_json
+	g++ $(CPPFLAGS) `pkg-config --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_attachment.o 		-o _build/jmime_attachment
 
 check-cc:
 	@hash clang 2>/dev/null || \
