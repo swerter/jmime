@@ -14,16 +14,18 @@ jmime-examples:
 
 	gcc $(CFLAGS)   -c src/parson/parson.c -o _build/parson.o
 	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0 gmime-2.6 gumbo` -c src/jmime.c -o _build/jmime.o
-	g++ $(CPPFLAGS) -c src/xapian.cc -o _build/xapian.o
-	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_indexer.c -o _build/jmime_indexer.o
+	g++ $(CPPFLAGS) -c src/jxapian.cc -o _build/jxapian.o
+	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_index_maildir.c -o _build/jmime_index_maildir.o
+	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_index_message.c -o _build/jmime_index_message.o
 	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_search.c -o _build/jmime_search.o
 	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_attachment.c -o _build/jmime_attachment.o
 	gcc $(CFLAGS)   `pkg-config --cflags glib-2.0` -c examples/jmime_json.c -o _build/jmime_json.o
 
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_indexer.o -o _build/jmime_indexer
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_search.o -o _build/jmime_search
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_json.o -o _build/jmime_json
-	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/xapian.o _build/jmime.o _build/jmime_attachment.o -o _build/jmime_attachment
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_index_maildir.o -o _build/jmime_index_maildir
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_index_message.o -o _build/jmime_index_message
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_search.o -o _build/jmime_search
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_json.o -o _build/jmime_json
+	g++ $(CPPFLAGS) `pkg-config --cflags --libs glib-2.0 gmime-2.6 gumbo` `xapian-config --cxxflags --libs` _build/parson.o _build/jxapian.o _build/jmime.o _build/jmime_attachment.o -o _build/jmime_attachment
 
 check-cc:
 	@hash clang 2>/dev/null || \

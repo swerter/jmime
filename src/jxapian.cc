@@ -1,6 +1,6 @@
 #include <xapian.h>
 #include <iostream>
-#include "xapian.h"
+#include "jxapian.h"
 
 extern "C" {
 
@@ -43,7 +43,7 @@ extern "C" {
   }
 
 
-  char *xapian_search(const char *index_path, const char *query_str) {
+  char *xapian_search(const char *index_path, const char *query_str, const unsigned int max_results) {
     Xapian::Database db(index_path);
     Xapian::Enquire enquire(db);
 
@@ -64,7 +64,7 @@ extern "C" {
     Xapian::Query query = qp.parse_query(query_str, flags);
     enquire.set_query(query);
     enquire.set_weighting_scheme (Xapian::BoolWeight());
-    Xapian::MSet matches = enquire.get_mset(0, 10);
+    Xapian::MSet matches = enquire.get_mset(0, max_results);
 
     std::string results = "";
     int counter = 0;

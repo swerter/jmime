@@ -17,7 +17,7 @@ typedef struct IndexingMessage {
 
 
 void xapian_index_message(const char *index_path, IndexingMessage *pm);
-char *xapian_search(const char *index_path, const char *query_str);
+char *xapian_search(const char *index_path, const char *query_str, const unsigned int max_results);
 
 #ifdef __cplusplus
 }

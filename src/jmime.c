@@ -1,18 +1,11 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
 #include <string.h>
-#include <errno.h>
 #include <fts.h>
-#include <glib.h>
 #include <gmime/gmime.h>
-#include <glib/gprintf.h>
-#include <gumbo.h>
 #include <libgen.h>
-
 #include "parson/parson.h"
+#include <gumbo.h>
 #include "jmime.h"
-#include "xapian.h"
+#include "jxapian.h"
 
 #define UTF8_CHARSET "UTF-8"
 #define RECURSION_LIMIT 30
@@ -23,6 +16,94 @@
 #define MIN_DATA_URI_IMAGE "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="
 
 #define INDEX_DIRECTORY_NAME ".jmimeindex"
+
+
+/*
+ * Address
+ *
+ * Address is a simple struct that represents an email address with
+ * name and address. Name is not required but address is.
+ *
+ */
+typedef struct Address {
+  gchar *name;
+  gchar *address;
+} Address;
+
+
+/*
+ * AddressesList
+ *
+ * AddressesList is an array of Addresses. As such we can reuse GPtrArray.
+ */
+
+typedef GPtrArray AddressesList;
+
+
+/*
+ * MessageBody
+ *
+ * Structure to keep the body (text or html) within the MessageData with its
+ * preview and sanitized (HTML) content.
+ *
+ */
+typedef struct MessageBody {
+  gchar *content_type;
+  gchar *content;
+  gchar *preview;
+  guint size;
+} MessageBody;
+
+
+
+/*
+ * MessageAttachment
+ *
+ * Structure to keep the downloadable attachment information, without content.
+ *
+ */
+
+typedef struct MessageAttachment {
+  guint part_id;
+  gchar *content_type;
+  gchar *filename;
+  guint size;
+} MessageAttachment;
+
+
+/*
+ * MessageAttachmentsList
+ *
+ * A list of MessageAttachment, as a wrap around GPtrArray
+ *
+ */
+typedef GPtrArray MessageAttachmentsList;
+
+
+/*
+ * MessageData
+ *
+ * Intermediate structure in which to keep the message data, already
+ * cleaned up, sanitized and normalized; the bodies and attachments have been
+ * already detected, and inline content has been injected.
+ *
+ */
+typedef struct MessageData {
+  gchar                  *message_id;
+  Address                *from;
+  AddressesList          *reply_to;
+  AddressesList          *to;
+  AddressesList          *cc;
+  AddressesList          *bcc;
+  gchar                  *subject;
+  gchar                  *date;
+  gchar                  *in_reply_to;
+  gchar                  *references;
+  MessageBody            *text;
+  MessageBody            *html;
+  MessageAttachmentsList *attachments;
+} MessageData;
+
 
 /*
  * Utils
@@ -538,18 +619,24 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities, GPtrA
 
   if (is_protocol_attribute) {
     gchar **protocol_parts = g_regex_split_simple(protocol_separators_regex, attr_value->str, G_REGEX_CASELESS, 0);
-    gchar *attr_protocol = g_strjoin(NULL, "|", protocol_parts[0], "|", NULL);
+    guint pparts_length = 0;
 
-    gchar *attr_prot_pattern = g_regex_escape_string(attr_protocol, -1);
-    g_free(attr_protocol);
+    while (protocol_parts[pparts_length])
+      pparts_length++;
 
-    gboolean is_permitted_protocol = g_regex_match_simple(attr_prot_pattern, permitted_protocols, G_REGEX_CASELESS, 0);
+    gboolean is_permitted_protocol = FALSE;
 
-    if (is_permitted_protocol && !g_ascii_strcasecmp(protocol_parts[0], "cid"))
-      cid_content_id = g_strdup(protocol_parts[1]);
+    if (pparts_length) {
+      gchar *attr_protocol = g_strjoin(NULL, "|", protocol_parts[0], "|", NULL);
+      gchar *attr_prot_pattern = g_regex_escape_string(attr_protocol, -1);
+      g_free(attr_protocol);
+      is_permitted_protocol = g_regex_match_simple(attr_prot_pattern, permitted_protocols, G_REGEX_CASELESS, 0);
+      g_free(attr_prot_pattern);
 
+      if (is_permitted_protocol && !g_ascii_strcasecmp(protocol_parts[0], "cid"))
+        cid_content_id = g_strdup(protocol_parts[1]);
+    }
     g_strfreev(protocol_parts);
-    g_free(attr_prot_pattern);
 
     if (!is_permitted_protocol) {
       g_string_free(attr_value, TRUE);
@@ -562,7 +649,7 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities, GPtrA
     if (inlines_ary && inlines_ary->len) {
       for (guint i = 0; i < inlines_ary->len; i++) {
         CollectedPart *inline_body = g_ptr_array_index(inlines_ary, i);
-        if (!g_ascii_strcasecmp(inline_body->content_id, cid_content_id)) {
+        if (inline_body->content_id && !g_ascii_strcasecmp(inline_body->content_id, cid_content_id)) {
           if (inline_body->content->len < MAX_CID_SIZE) {
             gchar *base64_data = g_base64_encode((const guchar *) inline_body->content->data, inline_body->content->len);
             gchar *new_attr_value = g_strjoin(NULL, "data:", inline_body->content_type, ";base64,", base64_data, NULL);
@@ -919,8 +1006,6 @@ static void collect_part(GMimeObject *part, PartCollectorData *fdata, gboolean m
     gboolean is_new_text = !fdata->text_part && is_text_plain;
     gboolean is_new_html = !fdata->html_part && (is_text_html || is_text_enriched || is_text_rtf);
 
-    GMimeStream *data_stream = g_mime_data_wrapper_get_stream(wrapper);
-
     GMimeStream *mem_stream = g_mime_stream_mem_new();
     g_mime_stream_mem_set_owner(GMIME_STREAM_MEM(mem_stream), FALSE);
     GMimeStream *filtered_mem_stream = g_mime_stream_filter_new(mem_stream);
@@ -965,11 +1050,10 @@ static void collect_part(GMimeObject *part, PartCollectorData *fdata, gboolean m
         flags = GMIME_FILTER_ENRICHED_IS_RICHTEXT;
 
       GMimeFilter *enriched_filter = g_mime_filter_enriched_new(flags);
-      g_mime_stream_filter_add(GMIME_STREAM_FILTER(data_stream), enriched_filter);
+      g_mime_stream_filter_add(GMIME_STREAM_FILTER(filtered_mem_stream), enriched_filter);
       g_object_unref(enriched_filter);
     }
-
-    g_mime_stream_write_to_stream(data_stream, filtered_mem_stream);
+    g_mime_data_wrapper_write_to_stream(wrapper, filtered_mem_stream);
 
     // Very important! Flush the the stream and get all content through.
     g_mime_stream_flush(filtered_mem_stream);
@@ -1030,9 +1114,10 @@ static void collector_foreach_callback(GMimeObject *parent, GMimeObject *part, g
   if (GMIME_IS_MESSAGE_PART(part)) {
 
     if (fdata->recursion_depth++ < RECURSION_LIMIT) {
-      GMimeMessage *message = g_mime_message_part_get_message ((GMimeMessagePart *) part);
-      g_mime_message_foreach(message, collector_foreach_callback, user_data);
-      g_object_unref(message);
+      GMimeMessage *message = g_mime_message_part_get_message((GMimeMessagePart *) part); // transfer none
+      if (message)
+        g_mime_message_foreach(message, collector_foreach_callback, user_data);
+
     } else {
       g_printerr("endless recursion detected: %d\r\n", fdata->recursion_depth);
       return;
@@ -1081,12 +1166,13 @@ static void extract_part(GMimeObject *part, PartExtractorData *a_data) {
 static void part_extractor_foreach_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data) {
   PartExtractorData *a_data = (PartExtractorData *) user_data;
 
-  if (GMIME_IS_MESSAGE_PART (part)) {
+  if (GMIME_IS_MESSAGE_PART(part)) {
 
     if (a_data->recursion_depth < RECURSION_LIMIT) {
-      GMimeMessage *message = g_mime_message_part_get_message ((GMimeMessagePart *) part);
-      g_mime_message_foreach (message, part_extractor_foreach_callback, a_data);
-      g_object_unref(message);
+      GMimeMessage *message = g_mime_message_part_get_message((GMimeMessagePart *) part); // transfer none
+      if (message)
+        g_mime_message_foreach (message, part_extractor_foreach_callback, a_data);
+
     } else {
       g_printerr("endless recursion detected: %d\r\n", a_data->recursion_depth);
       return;
@@ -1099,16 +1185,8 @@ static void part_extractor_foreach_callback(GMimeObject *parent, GMimeObject *pa
   } else if (GMIME_IS_PART (part)) {
 
     // We are interested only in the part 0 (counting down by same logic)
-    if (a_data->part_id == 0) {
-      // And only if the content type matches
-      GMimeContentType *content_type = g_mime_object_get_content_type(part);
-      gchar *content_type_str = g_mime_content_type_to_string(content_type);
-      gchar *content_type_lower_str = g_ascii_strdown(content_type_str, -1);
-      g_free(content_type_str);
-      if (!g_ascii_strcasecmp(content_type_lower_str, a_data->content_type))
-        extract_part(part, a_data);
-      g_free(content_type_lower_str);
-    }
+    if (a_data->part_id == 0)
+      extract_part(part, a_data);
 
     a_data->part_id--;
 
@@ -1157,11 +1235,11 @@ static void collect_addresses_into(InternetAddressList *ilist, AddressesList *ad
       InternetAddressGroup *group = INTERNET_ADDRESS_GROUP(address);
       InternetAddressList *group_list = internet_address_group_get_members(group); // transer none
 
-      if (group_list == NULL)
-        continue;
-
-      guint gsize = internet_address_list_length(group_list);
-      collect_addresses_into(group_list, addr_list, gsize);
+      if (group_list) {
+        guint gsize = internet_address_list_length(group_list);
+        if (gsize)
+          collect_addresses_into(group_list, addr_list, gsize);
+      }
 
     } else if (INTERNET_ADDRESS_IS_MAILBOX(address)) {
       InternetAddressMailbox *mailbox = INTERNET_ADDRESS_MAILBOX(address);
@@ -1183,8 +1261,10 @@ static AddressesList *collect_str_addresses(const gchar* addresses_list_str) {
 
   if (addresses) {
     guint addresses_length = internet_address_list_length(addresses);
-    result = new_addresses_list();
-    collect_addresses_into(addresses, result, addresses_length);
+    if (addresses_length) {
+      result = new_addresses_list();
+      collect_addresses_into(addresses, result, addresses_length);
+    }
     g_object_unref(addresses);
   }
   return result;
@@ -1203,22 +1283,22 @@ static AddressesList *collect_addresses(InternetAddressList *list) {
   return result;
 }
 
-  // From should always be there?
+
+// Can there be multiple from addresses??
 static Address *get_from_address(GMimeMessage *message) {
-  Address *addr;
-  const gchar *from = g_mime_message_get_sender(message);
-  InternetAddressList *from_addresses = internet_address_list_parse_string(from);
-  InternetAddress *from_address = internet_address_list_get_address(from_addresses, 0);
-  InternetAddressMailbox *from_mailbox = INTERNET_ADDRESS_MAILBOX(from_address);
-  const gchar *name = internet_address_get_name(from_address);
-  const gchar *address = internet_address_mailbox_get_addr(from_mailbox);
-  addr = new_address(address, name);
-  g_object_unref(from_addresses);
+  Address *addr = NULL;
+  const gchar *from_str = g_mime_message_get_sender(message);
+  if (from_str) {
+    AddressesList *addresses_list = collect_str_addresses(from_str);
+    if (addresses_list) {
+      addr = addresses_list_get(addresses_list, 0);
+    }
+  }
   return addr;
 }
 
 
-static GPtrArray *get_reply_to_addresses(GMimeMessage *message) {
+static AddressesList *get_reply_to_addresses(GMimeMessage *message) {
   const gchar *reply_to_string = g_mime_message_get_reply_to(message); // transfer-none
   if (reply_to_string)
     return collect_str_addresses(reply_to_string);
@@ -1226,7 +1306,7 @@ static GPtrArray *get_reply_to_addresses(GMimeMessage *message) {
 }
 
 
-static GPtrArray *get_to_addresses(GMimeMessage *message) {
+static AddressesList *get_to_addresses(GMimeMessage *message) {
   InternetAddressList *recipients_to = g_mime_message_get_recipients(message, GMIME_RECIPIENT_TYPE_TO); // transfer-none
   if (recipients_to)
     return collect_addresses(recipients_to);
@@ -1234,7 +1314,7 @@ static GPtrArray *get_to_addresses(GMimeMessage *message) {
 }
 
 
-static GPtrArray *get_cc_addresses(GMimeMessage *message) {
+static AddressesList *get_cc_addresses(GMimeMessage *message) {
   InternetAddressList *recipients_cc = g_mime_message_get_recipients(message, GMIME_RECIPIENT_TYPE_CC); // transfer-none
   if (recipients_cc)
     return collect_addresses(recipients_cc);
@@ -1242,7 +1322,7 @@ static GPtrArray *get_cc_addresses(GMimeMessage *message) {
 }
 
 
-static GPtrArray *get_bcc_addresses(GMimeMessage *message) {
+static AddressesList *get_bcc_addresses(GMimeMessage *message) {
   InternetAddressList *recipients_bcc = g_mime_message_get_recipients(message, GMIME_RECIPIENT_TYPE_BCC); // transfer-none
   if (recipients_bcc)
     return collect_addresses(recipients_bcc);
@@ -1285,6 +1365,8 @@ static MessageBody* get_body(CollectedPart *body_part, GPtrArray *inlines) {
 
 
 static gchar *guess_content_type_extension(const gchar *content_type) {
+  g_return_val_if_fail(content_type != NULL, NULL);
+
   gchar *extension = "txt";
   if (!g_ascii_strcasecmp(content_type, "text/plain")) {
     extension = "txt";
@@ -1590,7 +1672,9 @@ static void free_indexing_message(IndexingMessage *im) {
 
   g_free(im->path);
   g_free(im->i_from);
-  g_free(im->i_to);
+
+  if (im->i_to)
+    g_free(im->i_to);
 
   if (im->i_message_id)
     g_free(im->i_message_id);
@@ -1708,9 +1792,12 @@ static IndexingMessage *indexing_message_from_path(const gchar *path) {
   g_string_free(i_from_str, FALSE);
 
   GString *i_to_str = g_string_new(NULL);
-  gchar *to_str = addresses_list_to_indexing_string(mdata->to);
-  g_string_append(i_to_str, to_str);
-  g_free(to_str);
+
+  if (mdata->to) {
+    gchar *to_str = addresses_list_to_indexing_string(mdata->to);
+    g_string_append(i_to_str, to_str);
+    g_free(to_str);
+  }
 
   if (mdata->cc) {
     gchar *cc_str = addresses_list_to_indexing_string(mdata->cc);
@@ -1742,7 +1829,6 @@ static IndexingMessage *indexing_message_from_path(const gchar *path) {
  *
  */
 void jmime_index_message(const gchar *index_path, const gchar *message_path) {
-  g_printf("Indexing: %s\n", message_path);
   IndexingMessage *im = indexing_message_from_path(message_path);
   if (im) {
     xapian_index_message((char *)index_path, im);
@@ -1779,7 +1865,9 @@ static void index_directory_messages(const gchar *index_path, const gchar *dir_p
  *
  *
  */
-static gboolean is_maildir(gchar *path) {
+static gboolean is_maildir(const gchar *path) {
+    g_return_val_if_fail(path != NULL, FALSE);
+
     struct dirent **namelist;
     int dir_length;
 
@@ -1865,9 +1953,9 @@ void jmime_index_maildir(const gchar *maildir_path) {
 }
 
 
-gchar **jmime_search(const gchar *maildir_path, const gchar *query) {
+gchar **jmime_search(const gchar *maildir_path, const gchar *query, const guint max_results) {
   gchar *index_path = g_strjoin("/", maildir_path, INDEX_DIRECTORY_NAME, NULL);
-  gchar *results_str = xapian_search(index_path, query);
+  gchar *results_str = xapian_search(index_path, query, max_results);
   g_free(index_path);
   gchar **results = g_strsplit(results_str, "\n", -1);
   g_free(results_str);
