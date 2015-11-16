@@ -1,6 +1,7 @@
 #include <xapian.h>
 #include <iostream>
 #include "jxapian.h"
+#include <cstring>
 
 extern "C" {
 
@@ -75,7 +76,7 @@ extern "C" {
     }
 
     char *cstr = new char[results.length() + 1];
-    strcpy(cstr, results.c_str());
+    std::strcpy(cstr, results.c_str());
     return cstr;
   }
 
