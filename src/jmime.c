@@ -1,7 +1,9 @@
 #include <string.h>
+#include <libgen.h>
+#include <dirent.h>
+#include <sys/types.h>
 #include <fts.h>
 #include <gmime/gmime.h>
-#include <libgen.h>
 #include "parson/parson.h"
 #include <gumbo.h>
 #include "jmime.h"
