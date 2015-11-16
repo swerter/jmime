@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fts.h>
+#include <glib.h>
+#include <glib/gprintf.h>
 #include <gmime/gmime.h>
 #include "parson/parson.h"
 #include <gumbo.h>
@@ -1848,6 +1850,7 @@ void jmime_index_message(const gchar *mailbox_path, const gchar *message_path) {
   IndexingMessage *im = indexing_message_from_path(message_path);
 
   if (im) {
+    g_printf("Indexing: %s\n", message_path);
     gchar *index_path = g_strjoin("/", mailbox_path, INDEX_DIRECTORY_NAME, NULL);
     xapian_index_message(index_path, im);
     g_free(index_path);
@@ -1938,8 +1941,6 @@ void jmime_index_mailbox(const gchar *mailbox_path) {
     return;
   }
 
-  gchar *index_path = g_strjoin("/", mailbox_path, INDEX_DIRECTORY_NAME, NULL);
-
   FTSENT *node;
   FTSENT *child;
 
@@ -1957,7 +1958,7 @@ void jmime_index_mailbox(const gchar *mailbox_path) {
       while (child && child->fts_link) {
         if ((child->fts_info & FTS_D) && (!g_ascii_strcasecmp(child->fts_name, "cur"))) {
           gchar *dir_path = g_strjoin("/", child->fts_path, child->fts_name, NULL);
-          index_directory_messages(index_path, dir_path);
+          index_directory_messages(mailbox_path, dir_path);
           g_free(dir_path);
           fts_set(tree, child, FTS_SKIP);
         }
@@ -1965,8 +1966,6 @@ void jmime_index_mailbox(const gchar *mailbox_path) {
       }
     }
   }
-
-  g_free(index_path);
 
   if (errno)
     perror("fts_read");
