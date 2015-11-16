@@ -1,6 +1,6 @@
 CC?=clang
 NOOUT=2>&1 >/dev/null
-CFLAGS=-O3 -fPIC -std=c99 -Wall -g
+CFLAGS=-O3 -fPIC -Wall -g
 CPPFLAGS=-O3 -fPIC -Wall -g
 LDFLAGS=
 

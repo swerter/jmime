@@ -1,6 +1,7 @@
 #include <string.h>
 #include <libgen.h>
 #include <dirent.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <fts.h>
 #include <gmime/gmime.h>
@@ -111,7 +112,8 @@ typedef struct MessageData {
  * Utils
  */
 static gboolean gc_contains_c(const gchar *str, const gchar c) {
-  for(int i = 0; i < strlen(str); i++)
+  guint i;
+  for(i = 0; i < strlen(str); i++)
     if (str[i] == c)
       return TRUE;
   return FALSE;
@@ -649,7 +651,8 @@ static GString *build_attributes(GumboAttribute *at, gboolean no_entities, GPtrA
   if (cid_content_id) {
     gboolean cid_replaced = FALSE;
     if (inlines_ary && inlines_ary->len) {
-      for (guint i = 0; i < inlines_ary->len; i++) {
+      guint i;
+      for (i = 0; i < inlines_ary->len; i++) {
         CollectedPart *inline_body = g_ptr_array_index(inlines_ary, i);
         if (inline_body->content_id && !g_ascii_strcasecmp(inline_body->content_id, cid_content_id)) {
           if (inline_body->content->len < MAX_CID_SIZE) {
@@ -725,8 +728,8 @@ static GString *sanitize_contents(GumboNode* node, GPtrArray *inlines_ary) {
 
   // build up result for each child, recursively if need be
   GumboVector* children = &node->v.element.children;
-
-  for (guint i = 0; i < children->length; ++i) {
+  guint i;
+  for (i = 0; i < children->length; ++i) {
     GumboNode* child = (GumboNode*) (children->data[i]);
 
     if (child->type == GUMBO_NODE_TEXT) {
@@ -791,7 +794,8 @@ static GString *sanitize(GumboNode* node, GPtrArray* inlines_ary) {
   GString *atts = g_string_new(NULL);
 
   const GumboVector *attribs = &node->v.element.attributes;
-  for (int i=0; i< attribs->length; ++i) {
+  guint i;
+  for (i = 0; i < attribs->length; ++i) {
     GumboAttribute* at = (GumboAttribute*)(attribs->data[i]);
     GString *attsstr = build_attributes(at, no_entity_substitution, inlines_ary);
     g_string_append(atts, attsstr->str);
@@ -861,7 +865,8 @@ static GString *textize(const GumboNode* node) {
     const GumboVector* children = &node->v.element.children;
     GString *contents = g_string_new(NULL);
 
-    for (unsigned int i = 0; i < children->length; ++i) {
+    guint i;
+    for (i = 0; i < children->length; ++i) {
       GString *text = textize((GumboNode*) children->data[i]);
       gstr_strip(text);
 
@@ -1230,7 +1235,8 @@ static void collect_addresses_into(InternetAddressList *ilist, AddressesList *ad
   g_return_if_fail(addr_list != NULL);
   g_return_if_fail(size != 0);
 
-  for (guint i = 0; i < size; i++) {
+  guint i;
+  for (i = 0; i < size; i++) {
     InternetAddress *address = internet_address_list_get_address(ilist, i); // transfer none
 
     if (INTERNET_ADDRESS_IS_GROUP(address)) {
@@ -1414,7 +1420,8 @@ static void add_attachments_from_parts(MessageAttachmentsList *list, GPtrArray *
   g_return_if_fail((att_parts != NULL) && (list != NULL));
   g_return_if_fail(att_parts->len > 0);
 
-  for (gint i = 0; i < att_parts->len; i++) {
+  guint i;
+  for (i = 0; i < att_parts->len; i++) {
     CollectedPart *att_part = g_ptr_array_index(att_parts, i);
     MessageAttachment *attachment = new_message_attachment(att_part->part_id);
     attachment->content_type = g_strdup(att_part->content_type);
@@ -1522,7 +1529,8 @@ static JSON_Value *addresses_list_to_json(AddressesList *addr_list) {
   JSON_Value *addreses_value = json_value_init_array();
   JSON_Array *addresses_ary = json_value_get_array(addreses_value);
 
-  for (guint i = 0; i < addr_list->len; i++) {
+  guint i;
+  for (i = 0; i < addr_list->len; i++) {
     Address *addr = addresses_list_get(addr_list, i);
     JSON_Value *jaddr = address_to_json(addr);
     json_array_append_value(addresses_ary, jaddr);
@@ -1555,7 +1563,8 @@ static JSON_Value *message_attachments_list_to_json(MessageAttachmentsList *matt
 
   JSON_Value *attachments_value = json_value_init_array();
   JSON_Array *attachments_array = json_value_get_array(attachments_value);
-  for (guint i = 0; i < matts->len; i++) {
+  guint i;
+  for (i = 0; i < matts->len; i++) {
     MessageAttachment *att = message_attachments_list_get(matts, i);
     JSON_Value  *attachment_value = json_value_init_object();
     JSON_Object *attachment_object = json_value_get_object(attachment_value);
@@ -1703,7 +1712,8 @@ static gchar *addresses_list_to_indexing_string(AddressesList *list) {
   gchar *prepared_str = NULL;
   GString *p_addresses_str = g_string_new(NULL);
 
-  for (int i = 0; i < list->len; i++) {
+  guint i;
+  for (i = 0; i < list->len; i++) {
     if (i > 0)
       g_string_append_c(p_addresses_str, ' ');
 
@@ -1733,7 +1743,8 @@ static gchar *message_attachments_list_to_indexing_string(MessageAttachmentsList
   gchar *prepared_str = NULL;
   GString *p_attachments_str = g_string_new(NULL);
 
-  for (int i = 0; i < list->len; i++) {
+  guint i;
+  for (i = 0; i < list->len; i++) {
     MessageAttachment *matt = message_attachments_list_get(list, i);
     g_string_append(p_attachments_str, matt->filename);
     g_string_append_c(p_attachments_str, ' ');
@@ -1880,7 +1891,8 @@ static gboolean is_maildir(const gchar *path) {
       gboolean new_found = FALSE;
       gboolean tmp_found = FALSE;
 
-      for (int i = 0; (i < dir_length) && !(cur_found && new_found && tmp_found); i++) {
+      guint i;
+      for (i = 0; (i < dir_length) && !(cur_found && new_found && tmp_found); i++) {
         if (!cur_found && !g_ascii_strcasecmp(namelist[i]->d_name, "cur"))
           cur_found = TRUE;
         else if (!new_found && !g_ascii_strcasecmp(namelist[i]->d_name, "new"))
