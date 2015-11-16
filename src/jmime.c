@@ -1841,10 +1841,10 @@ static IndexingMessage *indexing_message_from_path(const gchar *path) {
  *
  *
  */
-void jmime_index_message(const gchar *index_path, const gchar *message_path) {
+void jmime_index_message(const gchar *mailbox_path, const gchar *message_path) {
   IndexingMessage *im = indexing_message_from_path(message_path);
   if (im) {
-    xapian_index_message((char *)index_path, im);
+    xapian_index_message((char *)mailbox_path, im);
     free_indexing_message(im);
   }
 }
@@ -1855,7 +1855,7 @@ void jmime_index_message(const gchar *index_path, const gchar *message_path) {
  *
  *
  */
-static void index_directory_messages(const gchar *index_path, const gchar *dir_path) {
+static void index_directory_messages(const gchar *mailbox_path, const gchar *dir_path) {
   struct dirent **namelist;
   int fl = scandir(dir_path, &namelist, NULL, NULL);
 
@@ -1866,7 +1866,7 @@ static void index_directory_messages(const gchar *index_path, const gchar *dir_p
       if (namelist[fl]->d_name[0] != '.') {
         gchar *message_path = g_strjoin("/", dir_path, namelist[fl]->d_name, NULL);
         g_free(namelist[fl]);
-        jmime_index_message(index_path, message_path);
+        jmime_index_message(mailbox_path, message_path);
         g_free(message_path);
       }
   g_free(namelist);
@@ -1915,12 +1915,12 @@ static gboolean is_maildir(const gchar *path) {
  *
  *
  */
-void jmime_index_maildir(const gchar *maildir_path) {
-  g_return_if_fail(maildir_path != NULL);
-  g_return_if_fail(access(maildir_path, F_OK) != -1);
+void jmime_index_mailbox(const gchar *mailbox_path) {
+  g_return_if_fail(mailbox_path != NULL);
+  g_return_if_fail(access(mailbox_path, F_OK) != -1);
 
   gchar *paths[2] = { NULL, NULL };
-  paths[0] = strip_trailing_slashes(maildir_path);
+  paths[0] = strip_trailing_slashes(mailbox_path);
   FTS *tree = fts_open(paths, FTS_NOCHDIR | FTS_PHYSICAL, 0);
   g_free(paths[0]);
 
@@ -1929,7 +1929,7 @@ void jmime_index_maildir(const gchar *maildir_path) {
     return;
   }
 
-  gchar *index_path = g_strjoin("/", maildir_path, INDEX_DIRECTORY_NAME, NULL);
+  gchar *index_path = g_strjoin("/", mailbox_path, INDEX_DIRECTORY_NAME, NULL);
 
   FTSENT *node;
   FTSENT *child;
@@ -1967,8 +1967,8 @@ void jmime_index_maildir(const gchar *maildir_path) {
 }
 
 
-gchar **jmime_search(const gchar *maildir_path, const gchar *query, const guint max_results) {
-  gchar *index_path = g_strjoin("/", maildir_path, INDEX_DIRECTORY_NAME, NULL);
+gchar **jmime_search_mailbox(const gchar *mailbox_path, const gchar *query, const guint max_results) {
+  gchar *index_path = g_strjoin("/", mailbox_path, INDEX_DIRECTORY_NAME, NULL);
   gchar *results_str = xapian_search(index_path, query, max_results);
   g_free(index_path);
   gchar **results = g_strsplit(results_str, "\n", -1);

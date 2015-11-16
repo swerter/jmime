@@ -5,7 +5,7 @@
 int main(int argc, char *argv[]) {
 
   if (argc < 3) {
-    g_printerr ("usage: %s <Index-Path> <Maildir-Path>\n", argv[0]);
+    g_printerr ("usage: %s <Index-Path> <Mailbox-Path>\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
