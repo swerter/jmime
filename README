@@ -1,0 +1,22 @@
+Installation
+
+Make sure you have the following Debian packages installed:
+
+  - build-essentials
+  - libgmime-2.6-dev
+  - libxapian-dev
+
+Download, build and install Google's gumbo-parser library to the system:
+
+    https://github.com/google/gumbo-parser
+
+
+Clone this repo by specifying recursive since we are using a JSON library parson as a submodule:
+
+  git clone --recursive git@github.com:dejanstrbac/jmime.git
+
+
+In the jmime directory:
+
+  make
+
