@@ -18,7 +18,7 @@ int main (int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  GByteArray *attachment = jmime_get_part_data(argv[1], part_id);
+  GByteArray *attachment = jmime_get_part(argv[1], part_id);
   if (!attachment)
     exit(EXIT_FAILURE);
 

@@ -1650,7 +1650,7 @@ GString *jmime_get_json(gchar *path, gboolean include_content) {
  *
  *
  */
-GByteArray *jmime_get_part_data(gchar *path, guint part_id) {
+GByteArray *jmime_get_part(gchar *path, guint part_id) {
   GMimeMessage *message = gmime_message_from_path(path);
   if (!message)
     return NULL;
