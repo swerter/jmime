@@ -11,7 +11,7 @@ Download, build and install Google's gumbo-parser library to the system:
     https://github.com/google/gumbo-parser
 
 
-Clone this repo by specifying recursive since we are using a JSON library parson as a submodule:
+Clone this repo recursively to fetch the submodule repo Parson (JSON library).
 
   git clone --recursive git@github.com:dejanstrbac/jmime.git
 
@@ -20,3 +20,5 @@ In the jmime directory:
 
   make
 
+
+The _build directory has now the JMime tools.
