@@ -1983,6 +1983,10 @@ gchar **jmime_search_mailbox(const gchar *mailbox_path, const gchar *query, cons
   gchar *index_path = g_strjoin("/", mailbox_path, INDEX_DIRECTORY_NAME, NULL);
   gchar *results_str = xapian_search(index_path, query, max_results);
   g_free(index_path);
+
+  if (!results_str)
+    return NULL;
+
   gchar **results = g_strsplit(results_str, "\n", -1);
   g_free(results_str);
   return results;
