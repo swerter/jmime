@@ -26,15 +26,15 @@ int main(int argc, char *argv[]) {
     for ( x = 1; x < argc; x++ ) {
       /* printf("File: %s\n", argv[x]); */
       GString *json_message = NULL;
-      json_message = jmime_get_json(argv[1], TRUE);
+      json_message = jmime_get_json(argv[x], TRUE);
       if (!json_message)
         exit(EXIT_FAILURE);
 
       setbuf(stdout, NULL);
-      g_printf("%s\n", json_message->str);
+      g_printf("%s,", json_message->str);
       g_string_free(json_message, TRUE);
     }
-    g_printf("]");
+    g_printf("]\n");
   }
 
   jmime_shutdown();
