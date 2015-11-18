@@ -10,6 +10,7 @@ int main(int argc, char *argv[]) {
   }
 
   jmime_init();
+  if (argc == 2) {
 
   GString *json_message = NULL;
   json_message = jmime_get_json(argv[1], TRUE);
@@ -19,6 +20,22 @@ int main(int argc, char *argv[]) {
   setbuf(stdout, NULL);
   g_printf("%s\n", json_message->str);
   g_string_free(json_message, TRUE);
+  } else {
+    g_printf("[");
+    int x;
+    for ( x = 1; x < argc; x++ ) {
+      /* printf("File: %s\n", argv[x]); */
+      GString *json_message = NULL;
+      json_message = jmime_get_json(argv[1], TRUE);
+      if (!json_message)
+        exit(EXIT_FAILURE);
+
+      setbuf(stdout, NULL);
+      g_printf("%s\n", json_message->str);
+      g_string_free(json_message, TRUE);
+    }
+    g_printf("]");
+  }
 
   jmime_shutdown();
 
